@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 225" width="720" height="225" role="img" aria-label="A see-saw between the new recovery skill and the original skill"><title>A see-saw between the new recovery skill and the original skill</title><style>
+.bg{fill:#eef2f6}.ink{fill:#1c1c1a}.mut{fill:#6b6a64}.ln{stroke:#c9c4b8}
+.robot{fill:#2f5d8a}.robotS{stroke:#2f5d8a}.good{fill:#3f8f5a}.goodS{stroke:#3f8f5a}
+.warn{fill:#c0503d}.gold{fill:#d39a2c}.goldS{stroke:#d39a2c}.acc{fill:#6a4c93}.accS{stroke:#6a4c93}
+.demo{fill:rgba(106,76,147,.22)}.demoS{stroke:rgba(106,76,147,.5)}.card{fill:#ffffff}.floor{fill:#d9d4c7}
+text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+@media (prefers-color-scheme: dark){
+.bg{fill:#1e262e}.ink{fill:#ecebe5}.mut{fill:#a3a199}.ln{stroke:#4a483f}
+.robot{fill:#7fb0de}.robotS{stroke:#7fb0de}.good{fill:#6fc28b}.goodS{stroke:#6fc28b}
+.warn{fill:#e47e6c}.gold{fill:#e8bd62}.goldS{stroke:#e8bd62}.acc{fill:#b79be0}.accS{stroke:#b79be0}
+.demo{fill:rgba(183,155,224,.25)}.demoS{stroke:rgba(183,155,224,.55)}.card{fill:#2a2a27}.floor{fill:#3a3730}}
+</style><rect class="bg" width="720" height="225" rx="10"/><polygon points="360,140 338,192 382,192" class="mut"/><g><rect x="100" y="134" width="520" height="8" class="ink"/><rect x="115" y="84" width="110" height="50" class="good"/><text x="170" y="115" class="card" font-size="13" font-weight="600" text-anchor="middle">recovery</text><rect x="495" y="84" width="110" height="50" class="robot"/><text x="550" y="115" class="card" font-size="13" font-weight="600" text-anchor="middle">original skill</text><animateTransform attributeName="transform" type="rotate" values="12 360 138;-12 360 138;12 360 138" keyTimes="0;.5;1" dur="6s" repeatCount="indefinite"/></g><text x="360" y="214" class="mut" font-size="13" text-anchor="middle">push one up, the other may go down</text></svg>

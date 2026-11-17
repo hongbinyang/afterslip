@@ -1,0 +1,11 @@
+# Generated files: every run writes under outputs/ and can be regenerated from the
+# committed source, configs and lock files. Nothing under outputs/ is committed.
+outputs/
+
+# Python and tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
