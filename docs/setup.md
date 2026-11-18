@@ -110,20 +110,28 @@ All generated files (run outputs, logs, videos, checkpoints, banks) are written 
 
 ## 6. Setup procedure
 
-To be written and tested during M0 item 0.0b. Expected shape (untested; lock files do not exist yet):
+Prerequisites: conda (Miniconda or Miniforge), `uv`, and `conda-lock` (e.g. `uv tool install conda-lock`). All steps are `make` targets defined and commented in the [`Makefile`](../Makefile); `make help` lists them.
 
 ```bash
-git clone --recurse-submodules https://github.com/hongbinyang/afterslip.git
+git clone https://github.com/hongbinyang/afterslip.git
 cd afterslip
-conda-lock install -n afterslip conda-lock.yml
+make setup          # conda env "afterslip" from conda-lock.yml, then the pip lock for this platform, then the project
 conda activate afterslip
-uv pip sync --dry-run requirements-linux.lock   # check: no unexpected uninstalls
-uv pip sync requirements-linux.lock             # or requirements-macos.lock
-pip install -e . --no-deps
-pytest                                   # tests (unit, integration, smoke)
+make test           # or: make smoke
 ```
 
-Environment variables expected by the upstream code (`REINFLOW_DIR`, `REINFLOW_DATA_DIR`, `REINFLOW_LOG_DIR`) are set by a project script instead of being edited by hand.
+After changing `environment.yml`, `requirements.in` or `requirements-overrides.txt`:
+
+```bash
+make lock           # regenerate conda-lock.yml, requirements-macos.lock and requirements-linux.lock together
+make sync           # bring the existing env in line with the locks (reinstalls the project)
+```
+
+Commit the changed inputs and all regenerated locks in the same commit. `make setup ENV=<name>` creates a differently named env, e.g. for a clean trial next to an existing one.
+
+Tested on macOS arm64 (2026-11-18): `make lock` and a fresh `make setup` succeed; `make smoke` gives 2 passed, 1 xfailed. The Linux lock is generated but not yet installed on Linux (milestone 0.0c).
+
+Environment variables expected by the upstream code (`REINFLOW_DIR`, `REINFLOW_DATA_DIR`, `REINFLOW_LOG_DIR`) are set by a project script instead of being edited by hand (added with the upstream code at 0.2a).
 
 ## 7. Tested configurations
 
