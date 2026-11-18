@@ -1,0 +1,227 @@
+# Technical design
+
+Status: draft, M0 scope. This document describes the architecture, interfaces and technical decisions that implement the [requirements](requirements.md) (v1.1 draft). Work items and checks are in [milestones.md](milestones.md) and [test-plan.md](test-plan.md); environment and versions are in [setup.md](setup.md). Later milestones add sections (disturbances and bank in M2, training and mitigations in M1–M3) when their design is needed; the interfaces below are chosen so those additions do not change them.
+
+**Markers:** **[unverified]** = depends on an artifact, version or behaviour not yet checked; **[decided]** = recorded decision with its date; **[open]** = a decision point listed in milestones.md.
+
+---
+
+## 1. Design principles
+
+1. **Standard tools first.** Packaging with `pyproject.toml`; dependencies from lock files; tests with pytest; configuration with Hydra/OmegaConf (as upstream); CI with GitHub Actions. No custom mechanism where a mature one exists.
+2. **Generated files never enter the repository.** Every run writes under `outputs/` (git-ignored). Tests write to pytest's temporary directories.
+3. **Upstream code is pinned, not edited.** The reference RL implementation is a git submodule at a fixed commit; local changes are patch files (NFR-COD-02).
+4. **Robot- and task-specific code sits behind one adapter.** Research machinery (snapshots, disturbances, banks, evaluation, recording) talks only to the task interface, so the FR3 track adds an adapter, not a rewrite.
+5. **State-based policies, one observer camera [decided 2026-11-17, D-2, FR-POL-04].** No camera is a policy input. One fixed third-person camera records videos and never feeds the policy.
+6. **Reproducibility by construction.** Seeds, configs and the git commit determine a run; a run manifest records the actual runtime environment (FR-TRK-01).
+
+## 2. Repository layout (target for M0)
+
+```
+afterslip/                     Python package (src layout below is equivalent; flat chosen for simplicity)
+  __init__.py
+  tasks/
+    interface.py               TaskInterface protocol, Snapshot type (§3, §4)
+    robosuite_can.py           Core adapter: robosuite PickPlaceCan, Panda, OSC_POSE
+  recording/
+    recorder.py                ObserverRecorder: offscreen frames -> MP4 + metadata (§5)
+  policies/
+    base.py                    Policy protocol, reset/reconstruction rule (§6)
+  eval/
+    episodes.py                episode runner, per-episode JSONL records (§7)
+  runtime.py                   run manifest: commit, config, versions, hardware (§8)
+configs/                       Hydra configs (task, recorder, eval)
+tests/
+  conftest.py                  shared fixtures: seeds, environment factory, generated fixture bank (§9)
+  unit/  integration/  smoke/
+third_party/
+  ReinFlow/                    git submodule, pinned commit [to add at 0.2a]
+  patches/                     reviewable local patches, if any
+outputs/                       git-ignored: runs, videos, logs, manifests
+pyproject.toml                 package metadata, tool configuration (pytest, ruff, mypy)
+environment.yml, conda-lock.yml, requirements-*.lock    environment definition (setup.md §4)
+```
+
+`pytest.ini` (current) moves into `pyproject.toml` under `[tool.pytest.ini_options]` when the package is created (0.0b).
+
+## 3. Task interface (FR-ENV-03, -05; milestone 0.2c)
+
+### 3.1 Purpose
+
+A Gymnasium-style wrapper that is the **only** way training, evaluation, snapshot and recording code touch the simulator. It hides robosuite (Core) or plain MuJoCo (FR3) behind one contract.
+
+### 3.2 Contract
+
+```python
+class TaskInterface(Protocol):
+    horizon: int                         # H, from the task's standard horizon (FR-ENV-05)
+    action_dim: int                      # 7 for Can with OSC_POSE (6 pose deltas + gripper) [unverified for π₀]
+    control_freq_hz: float               # 20 for robosuite Can
+
+    def reset(self, seed: int) -> Observation: ...
+    def step(self, action: np.ndarray) -> StepResult: ...
+    def get_state(self) -> Snapshot: ...          # §4
+    def set_state(self, snapshot: Snapshot) -> Observation: ...
+    def render(self, camera: str, width: int, height: int) -> np.ndarray: ...   # §5; must not change state
+
+@dataclass(frozen=True)
+class StepResult:
+    observation: Observation             # dict[str, np.ndarray], low-dimensional state only (FR-POL-04)
+    reward: float                        # benchmark sparse success reward (FR-RL-02)
+    success: bool                        # benchmark's own success predicate, every step (FR-ENV-05)
+    timeout: bool                        # step count reached H without success
+    info: dict
+```
+
+Decisions inside the contract:
+
+| Topic | Decision | Reason |
+|---|---|---|
+| Episode end | `success` or `timeout`; reaching H without success is a failure (requirements §4) | One definition for every suite |
+| Observation | Dict of named low-dimensional arrays; key names and order come from the π₀ config (FR-ART-03) **[unverified until 0.2b]** | The policy adapter maps keys; the task never reorders |
+| Seeding | `reset(seed)` seeds every random source the task uses, including robosuite's global-NumPy placement sampler | Seeded resets are the basis of fixed test seeds; robosuite uses `np.random` globally, a known pitfall |
+| Rendering | `render` reads the simulator only | Recording must not change the trajectory (§5) |
+| Gym vs Gymnasium | Our interface is Gymnasium-style; upstream uses `gym==0.22`. A thin adapter converts at the training boundary **[unverified]** | Avoid editing upstream code |
+
+### 3.3 Core adapter: `RobosuiteCanTask`
+
+Wraps `robosuite.make("PickPlaceCan", robots="Panda", controller_configs=OSC_POSE, control_freq=20, horizon=300, use_camera_obs=False, has_offscreen_renderer=True)`. Values come from config and must match the π₀ config at 0.2b. Known so far (setup.md §7): action dim 7, observation keys include `robot0_eef_pos`, `robot0_eef_quat`, `robot0_gripper_qpos`, `Can_pos`, `Can_quat`.
+
+### 3.4 FR3 adapter (F0/F1, later)
+
+Plain MuJoCo (`mujoco` bindings), a project scene file that includes the Menagerie FR3 model unmodified, adds one fixed observer camera, and later a hand at `attachment_site` and the sorting scene. Same `TaskInterface`; no robosuite dependency.
+
+## 4. Snapshot (FR-ENV-04, NFR-REP-03; milestones 0.4b, 2.1)
+
+### 4.1 Requirement recap
+
+A snapshot must restore the environment so that replaying the same actions reproduces the same trajectory exactly on the same backend. It contains environment state and the pre-intervention observation/action history, and **never** policy-internal state.
+
+### 4.2 Evidence so far
+
+The smoke test `test_sim_state_only_snapshot_round_trip` shows that restoring robosuite's `sim.get_state()` (time, qpos, qvel only) does **not** reproduce the continuation: the difference appears from the first replayed step (≈ 0.037). The cause is not yet isolated (0.4b).
+
+### 4.3 Candidate state components (to be confirmed by the 0.4b spike)
+
+| Group | Candidate contents | Why it may matter |
+|---|---|---|
+| Physics | `time`, `qpos`, `qvel`, `act`, `ctrl`, warm-start accelerations | `MjSimState` in robosuite 1.4.1 holds only time, qpos and qvel |
+| Controller | operational-space controller goal pose and orientation reference, interpolator state, gripper controller state | robosuite controllers keep goals between steps outside the physics state |
+| Environment | step counter, elapsed time, done flag, task flags (object placed) | Affects horizon and success bookkeeping |
+| Randomness | environment RNG state(s), including the global NumPy RNG if used during stepping | Noise or sampling after restore |
+| History | last k observations and actions (k from the π₀ config; `cond_steps` 1 upstream suggests k = 1) **[unverified]** | FR-DIS-10 policy re-initialisation |
+| Metadata | schema version, task name, source seed, step index, creation commit | Validation and provenance |
+
+The spike decides which of these are required; the snapshot schema then lists exactly those. **The 0.4b exercise is a hands-on learning task**: the table above is the search space, not the answer.
+
+### 4.4 Format
+
+- In-memory: a frozen dataclass `Snapshot` of NumPy arrays and scalars plus a `schema_version`.
+- On disk (banks, M2): one compressed `.npz` per snapshot or one per bank file, plus a JSON manifest. Hashes are computed over a canonical serialization of the arrays (sorted keys, fixed dtype and byte order), not over file bytes, so compression changes do not change identity (test-plan T2.4).
+- No pickle, so files are portable and safe to load.
+
+## 5. Observer recording (FR-EVAL-06; milestone 0.3e)
+
+### 5.1 Contract
+
+```python
+class ObserverRecorder:
+    def __init__(self, camera: str, width: int, height: int, fps: float, out_dir: Path): ...
+    def start(self, episode_meta: EpisodeMeta) -> None: ...
+    def capture(self, task: TaskInterface) -> None: ...       # one frame per control step
+    def finish(self) -> VideoRecord: ...                       # writes MP4 + JSON sidecar
+```
+
+### 5.2 Decisions
+
+| Topic | Decision |
+|---|---|
+| Camera | One fixed observer camera. Core: robosuite `agentview` **[decided D-2]**. FR3: a fixed camera defined in the project scene file |
+| Frame rate | One frame per control step, fps = control frequency (20) |
+| Resolution | 256×256 routine evidence; 512×512 demos (config) |
+| Encoding | imageio + imageio-ffmpeg, H.264 MP4 |
+| Orientation | Frames from robosuite 1.4.1 `MjSim.render` were vertically flipped on macOS; the adapter returns upright frames, so the recorder never flips **[verify per platform]** |
+| Side effects | Rendering must not change simulator state or any RNG; a test compares trajectories with and without recording |
+| Metadata sidecar | episode or bank-state ID, seed, policy checkpoint hash, suite, camera name and pose, fps, resolution, backend, frame count, episode length, git commit |
+| Location | `outputs/<run>/videos/<episode_id>.mp4` and `.json` |
+| Cost | Rendering lowers throughput, so training does not record; evaluation records only the configured subset |
+
+## 6. Policy interface (FR-ART-03, FR-DIS-10, FR-POL-04)
+
+```python
+class Policy(Protocol):
+    def reset(self) -> None: ...                               # clear internal state and pending action chunk
+    def act(self, observation: Observation) -> np.ndarray: ... # returns one action for the current step
+    def warm_start(self, obs_history: list[Observation], act_history: list[np.ndarray]) -> None: ...
+```
+
+- The π₀ adapter wraps the upstream model: input key order and normalization from the released config; action chunking handled inside the adapter (execute `act_steps` actions per chunk, replan afterwards).
+- **Reconstruction rule (FR-DIS-10):** at a disturbed-episode start, `reset()`, then `warm_start()` with the stored history, discard any pending chunk, replan.
+- Toy policies (constant, seeded random) implement the same protocol for harness tests.
+- Loading checks (test T0.5): observation keys and order, normalization shapes, action dimension, chunk length, history steps, denoising steps, and no image inputs.
+
+## 7. Episode records (FR-EVAL-04 subset; milestone 0.3b)
+
+One JSON line per episode under `outputs/<run>/episodes.jsonl`:
+
+`episode_id, suite, seed, bank_state_id (null for nominal), policy_hash, success, steps, timeout, video (path or null), git_commit`
+
+Fields for disturbances and re-grasps are added in M2 without renaming these.
+
+## 8. Run manifest and outputs (FR-TRK-01, -02)
+
+Each run directory `outputs/<YYYYMMDD-HHMMSS>-<name>/` contains the resolved config, `manifest.json` (git commit and dirty flag, submodule commit, platform, CPU/GPU, backend, Python and key package versions via `importlib.metadata`, start and end time), logs, episode records and videos. The manifest is written with standard library tools only.
+
+## 9. Testing architecture
+
+| Topic | Decision |
+|---|---|
+| Runner | pytest, markers `unit`, `integration`, `smoke`; strict xfail |
+| Missing dependencies | Never skipped: a broken environment is a failure |
+| Fixtures (`tests/conftest.py`) | fixture seeds from `fixtures/env_seeds.yaml` (committed input); a session-scoped **generated fixture bank** built from those seeds into a temporary directory by the same code as real banks; toy policies |
+| Data separation | tests never read validation or test seeds or banks |
+| CI | GitHub Actions: lint + type check + unit tests on every push; integration and smoke on Linux CPU (NFR-PORT-03) **[0.0c]** |
+| Determinism tests | snapshot round trip (T0.11), rendering has no side effects (§5.2), seeded reset gives identical initial state |
+
+## 10. Artifact and environment verification (milestones 0.1, 0.2a, 0.2b)
+
+1. **Upstream code (0.2a):** add ReinFlow as a submodule at a recorded commit; install into the project environment; record versions it requires. **[unverified]** whether its Robomimic path needs `mujoco-py` (upstream docs suggest not).
+2. **State-based checkpoint (0.2b) [decided D-2]:** find the state-based Can configuration and checkpoint in the upstream release; record source URL, file hash and license in `ARTIFACTS.md`. Only image-based Can configs have been read so far **[unverified]**. If no licensed state-based checkpoint exists, Path 2 applies (pretrain on Robomimic Can low-dimensional demonstrations).
+3. **Config mapping (0.2b):** a table from the released config to our task settings (observation keys, normalization file, action dimension, `horizon_steps`, `act_steps`, `cond_steps`, denoising steps, control frequency, horizon). A test asserts each value.
+4. **Licenses (0.1):** robosuite, robomimic and their datasets, ReinFlow code and checkpoints, Menagerie FR3 (Apache-2.0 file observed), each verified individually.
+
+## 11. First demonstrable increments (M0)
+
+Each increment is small, testable and ends in something visible. They are ordered so each builds on the last; none needs π₀ until D3.
+
+| # | Increment | Milestone items | Visible result | Checks |
+|---|---|---|---|---|
+| D1 | Package skeleton + task interface v0 + observer recorder v0 | 0.0b, 0.2c, 0.3e | A video of a seeded random-action Can episode recorded through our own interface, with its metadata sidecar | T0.6, T0.15; rendering has no side effects |
+| D2 | Snapshot spike | 0.4b | Test showing trajectory A and restored trajectory B are identical; the xfail marker removed | T0.11 |
+| D3 | π₀ loaded and evaluated | 0.2a, 0.2b, 0.3b | A video of π₀ performing Can on fixture seeds; episode JSONL | T0.5, T0.7 |
+| D4 | Scripted controller | 0.5a | A video of the scripted pick-and-place; measured success rate | T0.12 |
+
+D1 is proposed as the first hands-on implementation task. A code skeleton (interfaces, docstrings, `NotImplementedError` bodies, tests that define done) is prepared once this design is reviewed.
+
+## 12. Dependencies and risks for M0
+
+| Risk | Effect | Mitigation |
+|---|---|---|
+| No licensed state-based Can checkpoint | Path 2: pretraining effort and compute | Detected at 0.2b; Robomimic low-dimensional demonstrations as fallback |
+| Snapshot cannot be made exact | Bank-based evaluation design at risk | Spike (D2) early; candidate components in §4.3 |
+| Upstream gym/robosuite versions conflict with ours | Install blocked | Pin to upstream versions; adapter at the training boundary |
+| macOS rendering or upstream code differ from Linux | Smoke test results differ by platform | Linux CPU is the reference platform (CI); macOS outcomes recorded separately |
+
+## 13. Requirement coverage of this design
+
+| Requirement | Section |
+|---|---|
+| FR-ENV-01, -03, -05 | §3 |
+| FR-ENV-04, NFR-REP-03 | §4 |
+| FR-EVAL-06 | §5 |
+| FR-ART-03, FR-DIS-10, FR-POL-04 | §6 |
+| FR-EVAL-04 (subset), FR-EVAL-07 | §7 |
+| FR-TRK-01, -02 | §8 |
+| NFR-COD-01, NFR-PORT-03 | §9 |
+| FR-ART-01, -02, NFR-COD-02, NFR-LIC-01 | §10 |
+| NFR-PORT-01, -02 | §1, §2 (device selection by config is added with training in M1) |
