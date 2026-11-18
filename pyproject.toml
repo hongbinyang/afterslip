@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "afterslip"
+version = "0.0.0"
+description = "Recover without forgetting: RL post-training of a pretrained flow-matching manipulation policy in MuJoCo"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+# Runtime dependencies are pinned in the environment lock files (docs/setup.md §4),
+# not here; the package is installed with `pip install -e . --no-deps`.
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["afterslip*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: fast tests of one function or class",
+    "integration: several components against the real simulator",
+    "smoke: end-to-end path at minimal size on a given platform",
+]
+# A test marked xfail that unexpectedly passes is reported as a failure.
+xfail_strict = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.mypy]
+python_version = "3.8"
+ignore_missing_imports = true
