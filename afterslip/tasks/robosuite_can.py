@@ -28,7 +28,7 @@ Implementation notes and pitfalls (increment D1):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict
 
 import numpy as np
 
@@ -74,6 +74,11 @@ class RobosuiteCanTask:
     def render(self, camera: str, width: int, height: int) -> np.ndarray:
         # TODO(D1): offscreen render, return an upright uint8 RGB frame.
         raise NotImplementedError("D1: render")
+
+    def camera_pose(self, camera: str) -> Dict[str, Any]:
+        # TODO(D1): look up the camera id by name and read its world position and
+        # orientation from the simulator data; return plain lists so it serializes to JSON.
+        raise NotImplementedError("D1: camera_pose")
 
     def get_state(self) -> Any:
         raise NotImplementedError("D2: snapshot (docs/design.md §4)")

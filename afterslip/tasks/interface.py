@@ -78,6 +78,13 @@ class TaskInterface(Protocol):
         """
         ...
 
+    def camera_pose(self, camera: str) -> Dict[str, Any]:
+        """World pose of a named camera: {"pos": 3 floats, "xmat": 9 floats (row-major rotation)}.
+
+        Recorded in every video's metadata (design §5.2).
+        """
+        ...
+
     def get_state(self) -> Any:
         """Snapshot of the full environment state (increment D2, design §4)."""
         ...

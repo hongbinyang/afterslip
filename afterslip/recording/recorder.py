@@ -42,6 +42,7 @@ REQUIRED_METADATA_KEYS = (
     "suite",
     "policy_hash",
     "camera",
+    "camera_pose",
     "fps",
     "width",
     "height",

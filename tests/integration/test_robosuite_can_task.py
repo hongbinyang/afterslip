@@ -58,23 +58,42 @@ def test_success_flag_is_the_benchmark_predicate(task):
 
 
 def test_reaching_horizon_without_success_is_timeout(task):
+    # Zero actions hold the arm still (OSC deltas of zero), so the can is never placed:
+    # the episode deterministically runs to the horizon without success.
     task.reset(seed=0)
     result = None
-    for i, action in enumerate(_random_actions(task, task.horizon), start=1):
-        result = task.step(action)
-        if result.success:
-            pytest.skip("random actions succeeded; timeout path not exercised for this seed")
+    for i in range(1, task.horizon + 1):
+        result = task.step(np.zeros(task.action_dim))
+        assert not result.success, "zero actions must not succeed; fixture assumption broken"
         assert result.timeout == (i == task.horizon)
     assert result is not None and result.timeout and result.done
 
 
 def test_render_returns_upright_rgb_frame(task):
+    import mujoco
+
     task.reset(seed=0)
     frame = task.render("agentview", 64, 48)
     assert frame.shape == (48, 64, 3) and frame.dtype == np.uint8
-    # [unverified on platforms other than macOS] upright orientation: the floor is
-    # below the table, so the bottom rows should differ from the top rows.
-    assert not np.array_equal(frame[0], frame[-1])
+
+    # Orientation reference: MuJoCo's own Renderer returns upright images. Render the
+    # same model and data from the same camera; our frame must be closer to the
+    # reference than its vertical flip is. Exact equality is not expected (render
+    # settings differ). Checked on macOS; other platforms are unverified until run.
+    sim = task.benchmark_env.sim
+    renderer = mujoco.Renderer(sim.model._model, 48, 64)
+    renderer.update_scene(sim.data._data, camera="agentview")
+    reference = renderer.render().astype(np.int16)
+    upright_err = np.abs(frame.astype(np.int16) - reference).mean()
+    flipped_err = np.abs(frame[::-1].astype(np.int16) - reference).mean()
+    assert upright_err < flipped_err, "frame appears upside down"
+
+
+def test_camera_pose_is_reported(task):
+    task.reset(seed=0)
+    pose = task.camera_pose("agentview")
+    assert np.asarray(pose["pos"]).shape == (3,)
+    assert np.asarray(pose["xmat"]).shape == (9,)
 
 
 def test_rendering_does_not_change_the_trajectory(task):

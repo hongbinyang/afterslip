@@ -1,0 +1,35 @@
+# Direct Python dependencies (docs/setup.md §2, §4). Candidate versions from the upstream
+# reference code and the macOS environment check; compile to per-platform lock files
+# with `uv pip compile` (increment D1 / milestone 0.0b). Not yet locked or tested from scratch.
+
+# Simulation stack
+robosuite==1.4.1
+# robomimic 0.3.0 declares egl-probe, which does not build on macOS; see setup.md §7 for the
+# macOS workaround. The lock procedure must handle this per platform.
+robomimic==0.3.0
+gym==0.22.0
+mujoco                  # resolved by robosuite; 3.2.3 observed on macOS + Python 3.8
+
+# Learning
+torch==2.4.1
+torchvision==0.19.1
+hydra-core==1.3.2
+omegaconf==2.3.0
+einops==0.8.0
+
+# Recording
+imageio
+imageio-ffmpeg
+
+# Testing and quality
+pytest
+pytest-timeout
+hypothesis
+ruff
+mypy
+
+# macOS / Python 3.8: pyobjc releases >= 11 do not build (robosuite -> pynput dependency)
+pyobjc-core<11; sys_platform == "darwin"
+pyobjc-framework-Quartz<11; sys_platform == "darwin"
+pyobjc-framework-ApplicationServices<11; sys_platform == "darwin"
+pyobjc-framework-Cocoa<11; sys_platform == "darwin"

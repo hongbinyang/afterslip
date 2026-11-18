@@ -9,8 +9,11 @@ description = "Recover without forgetting: RL post-training of a pretrained flow
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.8"
-# Runtime dependencies are pinned in the environment lock files (docs/setup.md §4),
-# not here; the package is installed with `pip install -e . --no-deps`.
+# PROVISIONAL development setup. Runtime dependencies are meant to come from the
+# environment lock files (docs/setup.md §4), and the package is installed with
+# `pip install -e . --no-deps`. The lock files do not exist yet: until they do, a fresh
+# clone cannot reproduce the environment. Creating environment.yml and the locks from
+# environment.yml / requirements.in is part of increment D1 (milestone 0.0b).
 dependencies = []
 
 [tool.setuptools.packages.find]

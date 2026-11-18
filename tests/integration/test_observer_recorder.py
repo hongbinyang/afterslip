@@ -44,3 +44,4 @@ def test_recorder_writes_readable_video_and_metadata(tmp_path):
     assert set(REQUIRED_METADATA_KEYS) <= set(meta)
     assert meta["camera"] == "agentview" and meta["fps"] == 20
     assert meta["frame_count"] == meta["episode_steps"] == STEPS
+    assert len(meta["camera_pose"]["pos"]) == 3 and len(meta["camera_pose"]["xmat"]) == 9

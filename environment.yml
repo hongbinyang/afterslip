@@ -1,0 +1,10 @@
+# Conda layer: interpreter only (docs/setup.md §4). Candidate, not yet locked.
+# Python packages are NOT installed here; they come from requirements.in via the pip lock.
+# Lock per platform with conda-lock (increment D1 / milestone 0.0b).
+name: afterslip
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.8
+  - pip
