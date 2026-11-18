@@ -18,11 +18,14 @@ Afterslip takes such a pretrained robot policy and lets it **practise recovering
 
 ```mermaid
 flowchart LR
-    A[Pretrained policy<br/>learned from demos] --> B[Drop things on purpose<br/>in MuJoCo simulation]
-    B --> C[RL fine-tuning<br/>reward successful recovery]
-    C --> D[Compare ways to<br/>avoid forgetting]
-    D --> E[Score: recovery vs<br/>original skill]
+    P["Pretrained<br/>robot policy"] --> S["Simulation<br/>(MuJoCo)"]
+    S --> D["Inject drops<br/>and misgrasps"]
+    D --> R["RL practice,<br/>with and without<br/>anti-forgetting"]
+    R --> E["Same saved tests<br/>for every policy"]
+    E --> V["Recovery vs<br/>retained skill"]
 ```
+
+<sub>Planned behaviour, not results. The comparison may come out negative or inconclusive, and that is reported too. Components, data flow and the fair-test protocol: [docs/architecture.md](docs/architecture.md).</sub>
 
 1. **Start** from a pretrained *flow-matching* manipulation policy, e.g. one that picks up a can and places it in a bin.
 2. **Disturb** it: force drops and misgrasps in simulation.
@@ -41,6 +44,7 @@ The research question is answered first on a standard benchmark (a Franka Panda 
 | 3 minutes | [docs/explainer.md](docs/explainer.md): the illustrated story |
 | 20 minutes | [docs/requirements.md](docs/requirements.md) §1 Purpose, §3 Scope, §10 Milestones |
 | Time to build | [docs/requirements.md](docs/requirements.md) in full: numbered requirements, metrics, experiments |
+| The system's big picture | [docs/architecture.md](docs/architecture.md): components, data flow, evaluation sequence, FR3 track |
 | Planning the work | [docs/plan.md](docs/plan.md) roadmap → [docs/milestones.md](docs/milestones.md) work items → [docs/test-plan.md](docs/test-plan.md) checks |
 | Setting up | [docs/setup.md](docs/setup.md): platforms, stack, versions, package management |
 
@@ -61,6 +65,8 @@ docs/
   explainer.md       the story, with animations
   explainer/         animated SVGs + make_svgs.py (regenerates them)
   requirements.md    what to build: requirements, metrics, milestones
+  architecture.md    system big picture: components and flows (diagrams)
+  design.md          technical design: interfaces and decisions
   plan.md            one-page roadmap
   milestones.md      work items, decision points and checks per milestone
   test-plan.md       how each check is verified
