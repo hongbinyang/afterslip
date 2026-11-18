@@ -54,7 +54,7 @@ The research question is to be answered first on a standard benchmark: a Franka 
 
 - a locked environment (`make setup`) validated on macOS Apple Silicon; the Linux lock exists but has **not yet been validated** on Linux
 - simulation smoke tests (`make smoke`)
-- a code skeleton for the task interface and the observer recorder, with integration tests that define the first increment; its implementation is **not yet done**, so those tests currently fail by design
+- a code skeleton for the task interface and the observer recorder, with integration tests that define the first increment; its implementation is **not yet done**, so those tests are marked as strict expected failures (they report as `xfailed`, which is not evidence that the code works)
 - no pretrained policy has been loaded or verified yet
 
 ## Proposed stack
