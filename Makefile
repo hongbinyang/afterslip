@@ -114,11 +114,16 @@ sync: check-platform check-tools  ## Make the env's Python packages exactly matc
 	@# brings (pip, setuptools, wheel; harmless, builds run in isolated environments), and
 	@# the afterslip package itself, which is reinstalled right after. Any other planned
 	@# removal means the env was modified by hand: stop and show it.
-	@unexpected=$$(uv pip sync --python "$(ENV_PYTHON)" --dry-run $(PIP_LOCK) 2>&1 \
-	    | grep '^ - ' | grep -Ev '^ - (pip|setuptools|wheel|afterslip)==' || true); \
+	@# The preview's own exit status is checked first: if the preview fails (missing
+	@# lock, network error, broken env), stop instead of treating "no output" as safe.
+	@preview=$$(uv pip sync --python "$(ENV_PYTHON)" --dry-run $(PIP_LOCK) 2>&1); status=$$?; \
+	if [ $$status -ne 0 ]; then \
+	  echo "$$preview"; echo "Sync preview failed (exit $$status); nothing was changed."; exit 1; \
+	fi; \
+	unexpected=$$(printf '%s\n' "$$preview" | grep '^ - ' | grep -Ev '^ - (pip|setuptools|wheel|afterslip)=='); \
 	if [ -n "$$unexpected" ]; then \
 	  echo "Sync would uninstall packages that are not packaging tools:"; echo "$$unexpected"; \
-	  echo "Check the env (or recreate it with 'make remove-env setup')."; exit 1; \
+	  echo "Nothing was changed. Check the env, or recreate it: make remove-env, then make setup"; exit 1; \
 	fi
 	uv pip sync --python "$(ENV_PYTHON)" $(PIP_LOCK)
 	@# Sync removed the project itself (it is not in the lock); reinstall it.
@@ -128,11 +133,28 @@ install:  ## Install the afterslip package itself (editable, no extra dependenci
 	@# --no-deps: every dependency comes from the lock, never from pyproject.toml.
 	uv pip install --python "$(ENV_PYTHON)" --no-deps -e .
 
-setup: env sync  ## Fresh setup: create env, install locked packages and the project
+setup:  ## Fresh setup: create env, install locked packages and the project
+	@# Run the steps strictly in order, even under `make -j` (parallel make would
+	@# otherwise be free to start sync before the env exists).
+	$(MAKE) --no-print-directory env
+	$(MAKE) --no-print-directory sync
 	@echo "Done. Activate with: conda activate $(ENV)"
 
-remove-env:  ## Delete the conda env (name: ENV)
-	conda env remove -y -n $(ENV)
+remove-env:  ## Delete the conda env (name: ENV); refuses base and the active env
+	@# Safety: deletes only the single named env, never the base env, never the
+	@# currently active env, and only if it exists.
+	@if [ -z "$(ENV)" ] || [ "$(ENV)" = "base" ]; then \
+	  echo "Refusing to remove '$(ENV)'."; exit 1; \
+	fi
+	@if [ "$(ENV)" = "$$CONDA_DEFAULT_ENV" ]; then \
+	  echo "'$(ENV)' is the active env; run 'conda deactivate' first."; exit 1; \
+	fi
+	@if [ ! -x "$(ENV_PYTHON)" ]; then \
+	  echo "Environment '$(ENV)' does not exist; nothing to remove."; \
+	else \
+	  echo "Removing conda env '$(ENV)' at $(CONDA_BASE)/envs/$(ENV)"; \
+	  conda env remove -y -n "$(ENV)"; \
+	fi
 
 # ---------------------------------------------------------------------------
 # Tests
