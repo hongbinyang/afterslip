@@ -110,7 +110,7 @@ All generated files (run outputs, logs, videos, checkpoints, banks) are written 
 
 ## 6. Setup procedure
 
-Prerequisites: conda (Miniconda or Miniforge), `uv`, and `conda-lock` (e.g. `uv tool install conda-lock`). All steps are `make` targets defined and commented in the [`Makefile`](../Makefile); `make help` lists them.
+Prerequisites: conda (Miniconda or Miniforge), `uv`, and `conda-lock` (e.g. `uv tool install conda-lock`). All steps are `make` targets defined and commented in the [`Makefile`](../Makefile); `make help` lists them. The Makefile detects the operating system and CPU (`make platform` shows the result) and installs the matching pip lock: macOS arm64 or Linux x86-64. Other platforms stop with a clear message until a lock is added for them.
 
 ```bash
 git clone https://github.com/hongbinyang/afterslip.git
