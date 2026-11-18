@@ -12,8 +12,8 @@ Status: draft, M0 scope. This document describes the architecture, interfaces an
 2. **Generated files never enter the repository.** Every run writes under `outputs/` (git-ignored). Tests write to pytest's temporary directories.
 3. **Upstream code is pinned, not edited.** The reference RL implementation is a git submodule at a fixed commit; local changes are patch files (NFR-COD-02).
 4. **Robot- and task-specific code sits behind one adapter.** Research machinery (snapshots, disturbances, banks, evaluation, recording) talks only to the task interface, so the FR3 track adds an adapter, not a rewrite.
-5. **State-based policies, one observer camera [decided 2026-11-17, D-2, FR-POL-04].** No camera is a policy input. One fixed third-person camera records videos and never feeds the policy.
-6. **Reproducibility by construction.** Seeds, configs and the git commit determine a run; a run manifest records the actual runtime environment (FR-TRK-01).
+5. **State-based policies, one observer camera [decided 2026-11-17, D-2, FR-POL-04].** No camera is a policy input. One fixed third-person camera records videos and never feeds the policy. Which camera is used, and the tooling choices in this document (CI service, lock tools, configuration system), are candidates until tested and recorded in setup.md.
+6. **Reproducibility by construction.** A run is specified by its seeds, config, git and submodule commits, artifact hashes and environment lock files; its manifest records the actual runtime environment (FR-TRK-01). On the same backend this aims at exact repetition; across backends it does not, and reproducibility is judged by the requirements' predeclared statistical comparison (NFR-REP-02, NFR-REP-03), not bitwise identity.
 
 ## 2. Repository layout (target for M0)
 
@@ -77,11 +77,11 @@ Decisions inside the contract:
 
 | Topic | Decision | Reason |
 |---|---|---|
-| Episode end | `success` or `timeout`; reaching H without success is a failure (requirements §4) | One definition for every suite |
+| Episode end | Candidate: end on `success` or `timeout`; reaching H without success is a failure (requirements §4). Whether the benchmark and the released checkpoint's evaluation also end early on success, or run to H, is **[unverified]** and is checked at 0.2b; the interface follows the benchmark's and checkpoint's convention, recorded in the config mapping | Success rates must be comparable with the released figure (FR-POL-01) |
 | Observation | Dict of named low-dimensional arrays; key names and order come from the π₀ config (FR-ART-03) **[unverified until 0.2b]** | The policy adapter maps keys; the task never reorders |
 | Seeding | `reset(seed)` seeds every random source the task uses, including robosuite's global-NumPy placement sampler | Seeded resets are the basis of fixed test seeds; robosuite uses `np.random` globally, a known pitfall |
 | Rendering | `render` reads the simulator only | Recording must not change the trajectory (§5) |
-| Gym vs Gymnasium | Our interface is Gymnasium-style; upstream uses `gym==0.22`. A thin adapter converts at the training boundary **[unverified]** | Avoid editing upstream code |
+| Gym vs Gymnasium | Candidate: our interface is Gymnasium-style; upstream uses `gym==0.22` and its own Robomimic environment wrapper. Whether a thin adapter can reproduce the upstream wrapper's behaviour (observation processing, action scaling, episode end) is **[unverified]**; equivalence is tested against the released checkpoint at 0.2b/0.3c before our interface is used for evaluation | Avoid editing upstream code without assuming equivalence |
 
 ### 3.3 Core adapter: `RobosuiteCanTask`
 
@@ -112,7 +112,11 @@ The smoke test `test_sim_state_only_snapshot_round_trip` shows that restoring ro
 | History | last k observations and actions (k from the π₀ config; `cond_steps` 1 upstream suggests k = 1) **[unverified]** | FR-DIS-10 policy re-initialisation |
 | Metadata | schema version, task name, source seed, step index, creation commit | Validation and provenance |
 
-The spike decides which of these are required; the snapshot schema then lists exactly those. **The 0.4b exercise is a hands-on learning task**: the table above is the search space, not the answer.
+FR-ENV-04 already **requires** the snapshot to hold simulator state, task state, controller internal state, environment RNG states, intervention metadata and the last-k observation and action history. The schema therefore keeps all of these groups regardless of the spike's outcome. The spike determines **how** each group is captured and restored in robosuite (which attributes, in what order, and what must be re-derived after restoring), and whether further components (e.g. warm-start accelerations) are also needed for exact repetition. **The 0.4b exercise is a hands-on learning task**: the table above is the search space for the capture method, not the answer.
+
+Two properties are tested separately:
+1. **Restore identity:** immediately after `set_state(s)`, `get_state()` returns a snapshot equal to `s` in every required field.
+2. **Replay identity:** from a restored snapshot, the same actions reproduce the original continuation exactly on the same backend.
 
 ### 4.4 Format
 
@@ -136,7 +140,7 @@ class ObserverRecorder:
 
 | Topic | Decision |
 |---|---|
-| Camera | One fixed observer camera. Core: robosuite `agentview` **[decided D-2]**. FR3: a fixed camera defined in the project scene file |
+| Camera | One fixed observer camera **[decided D-2]**. Candidate for Core: robosuite `agentview`; FR3: a fixed camera defined in the project scene file. Final camera name and pose recorded in config and metadata |
 | Frame rate | One frame per control step, fps = control frequency (20) |
 | Resolution | 256×256 routine evidence; 512×512 demos (config) |
 | Encoding | imageio + imageio-ffmpeg, H.264 MP4 |
@@ -179,14 +183,14 @@ Each run directory `outputs/<YYYYMMDD-HHMMSS>-<name>/` contains the resolved con
 | Runner | pytest, markers `unit`, `integration`, `smoke`; strict xfail |
 | Missing dependencies | Never skipped: a broken environment is a failure |
 | Fixtures (`tests/conftest.py`) | fixture seeds from `fixtures/env_seeds.yaml` (committed input); a session-scoped **generated fixture bank** built from those seeds into a temporary directory by the same code as real banks; toy policies |
-| Data separation | tests never read validation or test seeds or banks |
-| CI | GitHub Actions: lint + type check + unit tests on every push; integration and smoke on Linux CPU (NFR-PORT-03) **[0.0c]** |
+| Data separation | Unit, integration and smoke tests and their fixtures never read validation or test seeds or banks. Protocol evaluations defined in the test plan (e.g. T0.8, T2.11, T3.3) read validation or test data exactly as the test plan specifies, and test data only after the design lock |
+| CI | Candidate: GitHub Actions running lint, type check and unit tests on every push, and integration and smoke tests on Linux CPU (NFR-PORT-03) **[open, 0.0c]** |
 | Determinism tests | snapshot round trip (T0.11), rendering has no side effects (§5.2), seeded reset gives identical initial state |
 
 ## 10. Artifact and environment verification (milestones 0.1, 0.2a, 0.2b)
 
 1. **Upstream code (0.2a):** add ReinFlow as a submodule at a recorded commit; install into the project environment; record versions it requires. **[unverified]** whether its Robomimic path needs `mujoco-py` (upstream docs suggest not).
-2. **State-based checkpoint (0.2b) [decided D-2]:** find the state-based Can configuration and checkpoint in the upstream release; record source URL, file hash and license in `ARTIFACTS.md`. Only image-based Can configs have been read so far **[unverified]**. If no licensed state-based checkpoint exists, Path 2 applies (pretrain on Robomimic Can low-dimensional demonstrations).
+2. **State-based checkpoint (0.2b) [decided D-2]:** find the state-based Can configuration and checkpoint in the upstream release; record source URL, file hash and license in `ARTIFACTS.md`. Only image-based Can configs have been read so far **[unverified]**. The §6.1.1 decision table applies as written: **Path 1** needs a licensed state-based checkpoint whose reproduction passes; **Path 2** (pretrain a state-based π₀) needs **verified, licensed demonstrations** with low-dimensional observations, and its feasibility (configuration, compute) is assessed rather than assumed; if no licensed demonstrations exist, **Path 3** applies: work stops and a re-scope decision is requested. A missing checkpoint alone does not establish that Path 2 is feasible.
 3. **Config mapping (0.2b):** a table from the released config to our task settings (observation keys, normalization file, action dimension, `horizon_steps`, `act_steps`, `cond_steps`, denoising steps, control frequency, horizon). A test asserts each value.
 4. **Licenses (0.1):** robosuite, robomimic and their datasets, ReinFlow code and checkpoints, Menagerie FR3 (Apache-2.0 file observed), each verified individually.
 
@@ -197,7 +201,7 @@ Each increment is small, testable and ends in something visible. They are ordere
 | # | Increment | Milestone items | Visible result | Checks |
 |---|---|---|---|---|
 | D1 | Package skeleton + task interface v0 + observer recorder v0 | 0.0b, 0.2c, 0.3e | A video of a seeded random-action Can episode recorded through our own interface, with its metadata sidecar | T0.6, T0.15; rendering has no side effects |
-| D2 | Snapshot spike | 0.4b | Test showing trajectory A and restored trajectory B are identical; the xfail marker removed | T0.11 |
+| D2 | Snapshot spike | 0.4b | New full-snapshot tests (restore identity and replay identity) passing. The existing simulator-state-only diagnostic stays a separate test; it is expected to keep failing, because simulator state alone is not the full snapshot, and its xfail marker is only revisited if its own behaviour changes | T0.11 |
 | D3 | π₀ loaded and evaluated | 0.2a, 0.2b, 0.3b | A video of π₀ performing Can on fixture seeds; episode JSONL | T0.5, T0.7 |
 | D4 | Scripted controller | 0.5a | A video of the scripted pick-and-place; measured success rate | T0.12 |
 
@@ -207,7 +211,7 @@ D1 is proposed as the first hands-on implementation task. A code skeleton (inter
 
 | Risk | Effect | Mitigation |
 |---|---|---|
-| No licensed state-based Can checkpoint | Path 2: pretraining effort and compute | Detected at 0.2b; Robomimic low-dimensional demonstrations as fallback |
+| No licensed state-based Can checkpoint | Path 2 if licensed demonstrations are verified (pretraining effort and compute); Path 3 and a re-scope decision if not | Detected at 0.2b; demonstrations verified under 0.1 before Path 2 is chosen |
 | Snapshot cannot be made exact | Bank-based evaluation design at risk | Spike (D2) early; candidate components in §4.3 |
 | Upstream gym/robosuite versions conflict with ours | Install blocked | Pin to upstream versions; adapter at the training boundary |
 | macOS rendering or upstream code differ from Linux | Smoke test results differ by platform | Linux CPU is the reference platform (CI); macOS outcomes recorded separately |
