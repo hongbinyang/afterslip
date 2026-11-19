@@ -1,17 +1,9 @@
-"""Smoke tests for the candidate simulation stack (docs/setup.md, test-plan T0.4, T0.15).
+"""Smoke tests for the simulation stack (docs/setup.md; test-plan T0.4, T0.15).
 
-These tests import the simulation stack directly. A missing or broken dependency is
-a collection error, i.e. a failure, never a skip: an environment that cannot run the
-stack must not report a pass.
+The stack is imported directly: a missing or broken dependency is a failure, not a skip.
+Videos are written to pytest's temporary directory.
 
-Run:
-    pytest -m smoke
-
-Pitfalls:
-  - robosuite 1.4.1 ``MjSim.render`` returned vertically flipped frames on the
-    platform tested (macOS, CGL); frames are flipped back before encoding.
-  - Videos are written to pytest's temporary directory. Nothing is written into
-    the repository.
+Run: pytest -m smoke
 """
 
 from __future__ import annotations
@@ -57,7 +49,7 @@ def test_can_env_creates_and_steps(can_env):
     """The Can task can be created and stepped; the action space is 7-D (OSC pose + gripper)."""
     assert can_env.action_dim == 7
     for a in _random_actions(can_env, 10, np.random.default_rng(SEED)):
-        obs, reward, done, info = can_env.step(a)
+        obs, _reward, _done, _info = can_env.step(a)
     for key in ("robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos", "Can_pos"):
         assert key in obs
 

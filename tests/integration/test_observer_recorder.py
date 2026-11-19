@@ -1,7 +1,4 @@
-"""Done-definition for increment D1, observer recorder (docs/design.md §5; test-plan T0.15).
-
-Fails until `ObserverRecorder` and `RobosuiteCanTask` are implemented.
-"""
+"""Integration test for the observer recorder (docs/design.md §5; test-plan T0.15)."""
 
 from __future__ import annotations
 
@@ -14,19 +11,9 @@ import pytest
 from afterslip.recording.recorder import REQUIRED_METADATA_KEYS, EpisodeMeta, ObserverRecorder
 from afterslip.tasks.robosuite_can import CanTaskConfig, RobosuiteCanTask
 
-# D1 is not implemented yet: these tests define its completion and are expected to fail
-# with NotImplementedError until then. strict=True: once the implementation makes a test
-# pass, the run fails until this marker is removed; any exception other than
-# NotImplementedError is a real failure. Removing this marker is part of completing D1.
-D1_NOT_IMPLEMENTED = pytest.mark.xfail(
-    strict=True,
-    raises=NotImplementedError,
-    reason="D1 not implemented yet (docs/design.md section 11)",
-)
-
-pytestmark = [pytest.mark.integration, D1_NOT_IMPLEMENTED]
-
 STEPS = 20
+
+pytestmark = pytest.mark.integration
 
 
 def test_recorder_writes_readable_video_and_metadata(tmp_path):

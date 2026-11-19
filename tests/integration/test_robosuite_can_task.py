@@ -1,8 +1,4 @@
-"""Done-definition for increment D1, task interface (docs/design.md §3; test-plan T0.6).
-
-These tests fail until `RobosuiteCanTask` is implemented. They are the acceptance
-checks for the hands-on task; do not weaken them to make them pass.
-"""
+"""Integration tests for the robosuite Can task adapter (docs/design.md §3; test-plan T0.6)."""
 
 from __future__ import annotations
 
@@ -11,17 +7,7 @@ import pytest
 
 from afterslip.tasks.robosuite_can import CanTaskConfig, RobosuiteCanTask
 
-# D1 is not implemented yet: these tests define its completion and are expected to fail
-# with NotImplementedError until then. strict=True: once the implementation makes a test
-# pass, the run fails until this marker is removed; any exception other than
-# NotImplementedError is a real failure. Removing this marker is part of completing D1.
-D1_NOT_IMPLEMENTED = pytest.mark.xfail(
-    strict=True,
-    raises=NotImplementedError,
-    reason="D1 not implemented yet (docs/design.md section 11)",
-)
-
-pytestmark = [pytest.mark.integration, D1_NOT_IMPLEMENTED]
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

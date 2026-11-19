@@ -1,36 +1,23 @@
-"""Core task adapter: robosuite PickPlaceCan (the Robomimic Can task) with a Panda arm.
+"""Task adapter for robosuite PickPlaceCan (the Robomimic Can task) with a Panda arm.
 
-Implements `TaskInterface` (afterslip/tasks/interface.py, docs/design.md §3.3).
+Implements `TaskInterface` (docs/design.md §3.3). Settings come from `CanTaskConfig`
+and are candidates until matched to the pretrained policy's config (milestone 0.2b).
 
-Settings come from `CanTaskConfig`. They must match the pretrained policy's released
-config once it is verified (milestone 0.2b); until then the defaults are candidates.
-
-Implementation notes and pitfalls (increment D1):
-  - Create the robosuite env with `robosuite.make(...)`; the OSC_POSE controller config
-    comes from `robosuite.load_controller_config(default_controller="OSC_POSE")`.
-  - Seeding: robosuite's object placement samples from NumPy's *global* RNG. A seeded
-    reset must therefore seed that global RNG before `env.reset()`. Check that two
-    resets with the same seed give identical observations, and different seeds do not.
-  - Success: use the benchmark's own predicate (robosuite env `_check_success()`), every
-    step. Do not reimplement it.
-  - Horizon: robosuite tracks `env.timestep` and `env.horizon`. Decide how `timeout` is
-    computed so that reaching H without success is reported as timeout.
-  - Observations: keep only low-dimensional entries (no images; FR-POL-04). Which keys
-    the policy needs is fixed later by the checkpoint config; keep them all for now.
-  - Rendering: `env.sim.render(camera_name=..., width=..., height=...)` returned frames
-    upside down on macOS with robosuite 1.4.1 [unverified on other platforms]. Return
-    upright frames. Rendering must not change the trajectory: the integration test
-    compares a rendered and an unrendered rollout.
-  - [unverified] Equivalence with the upstream training code's own environment wrapper
-    (observation processing, action scaling, episode end) is checked at 0.2b/0.3c.
+Notes:
+  - robosuite places objects with NumPy's global RNG, so `reset` seeds it.
+  - `success` is the benchmark's own predicate; `timeout` means the horizon was
+    reached without success.
+  - Observations keep low-dimensional entries only (FR-POL-04).
+  - `MjSim.render` returns frames upside down (observed on macOS); `render` flips them.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
+import robosuite as suite
 
 from afterslip.tasks.interface import Observation, StepResult
 
@@ -39,6 +26,7 @@ from afterslip.tasks.interface import Observation, StepResult
 class CanTaskConfig:
     """Candidate settings for the Can task (to be matched to the checkpoint at 0.2b)."""
 
+    env_name: str = "PickPlaceCan"
     robot: str = "Panda"
     controller: str = "OSC_POSE"
     control_freq_hz: float = 20.0
@@ -53,35 +41,75 @@ class RobosuiteCanTask:
         self.config = config
         self.horizon = config.horizon
         self.control_freq_hz = config.control_freq_hz
-        # TODO(D1): create the robosuite environment (offscreen renderer on, camera
-        # observations off) and set self.action_dim from it.
-        raise NotImplementedError("D1: create the robosuite environment")
+        controller_config = suite.load_controller_config(default_controller=config.controller)
+        self._env = suite.make(
+            env_name=config.env_name,
+            robots=config.robot,
+            controller_configs=controller_config,
+            has_renderer=False,
+            has_offscreen_renderer=True,
+            use_camera_obs=False,
+            control_freq=int(config.control_freq_hz),
+            horizon=config.horizon,
+        )
+        self.action_dim = self._env.action_dim
 
     @property
     def benchmark_env(self) -> Any:
         """The wrapped robosuite environment, for tests that compare with the benchmark."""
-        raise NotImplementedError("D1")
+        return self._env
 
     def reset(self, seed: int) -> Observation:
-        # TODO(D1): seed every random source the task uses, reset, return state observation.
-        raise NotImplementedError("D1: seeded reset")
+        np.random.seed(seed)
+        raw = self._env.reset()
+        return self._state_obs(raw)
+
+    @staticmethod
+    def _state_obs(raw: dict) -> Observation:
+        """Keep low-dimensional state entries only (no images; FR-POL-04)."""
+        return {key: np.asarray(value) for key, value in raw.items() if np.asarray(value).ndim <= 1}
 
     def step(self, action: np.ndarray) -> StepResult:
-        # TODO(D1): step the environment; fill success from the benchmark predicate and
-        # timeout from the step count and horizon.
-        raise NotImplementedError("D1: step")
+        raw, reward, _done, info = self._env.step(action)
+        success = bool(self._env._check_success())
+        timeout = (not success) and self._env.timestep >= self.horizon
+        return StepResult(
+            observation=self._state_obs(raw),
+            reward=float(reward),
+            success=success,
+            timeout=timeout,
+            info=info,
+        )
 
     def render(self, camera: str, width: int, height: int) -> np.ndarray:
-        # TODO(D1): offscreen render, return an upright uint8 RGB frame.
-        raise NotImplementedError("D1: render")
+        frame = self._env.sim.render(camera_name=camera, width=width, height=height, depth=False)
+        frame = np.ascontiguousarray(frame[::-1, :, :])
+        return frame.astype(np.uint8)
 
-    def camera_pose(self, camera: str) -> Dict[str, Any]:
-        # TODO(D1): look up the camera id by name and read its world position and
-        # orientation from the simulator data; return plain lists so it serializes to JSON.
-        raise NotImplementedError("D1: camera_pose")
+    def camera_pose(self, camera: str) -> dict[str, Any]:
+        cam_id = self._env.sim.model.camera_name2id(camera)
+        return {
+            "pos": self._env.sim.data.cam_xpos[cam_id].tolist(),
+            "xmat": self._env.sim.data.cam_xmat[cam_id].tolist(),
+        }
 
     def get_state(self) -> Any:
+        # TODO(D2): return a full snapshot of the environment (docs/design.md §4).
+        # Implementation notes and pitfalls (increment D2):
+        #   - FR-ENV-04 requires every group: simulator, task, controller internal state,
+        #     RNG states, last-k observation/action history and intervention metadata.
+        #   - robosuite's `sim.get_state()` holds only time, qpos and qvel; the smoke test
+        #     `test_sim_state_only_snapshot_round_trip` shows that this alone does not
+        #     reproduce the continuation. design.md §4.3 lists candidate components to
+        #     investigate (controller goals, interpolators, counters, RNG, ...).
+        #   - Never store policy-internal state in the snapshot.
         raise NotImplementedError("D2: snapshot (docs/design.md §4)")
 
     def set_state(self, snapshot: Any) -> Observation:
+        # TODO(D2): restore a snapshot and return the observation (docs/design.md §4).
+        # Two properties are tested separately:
+        #   - restore identity: get_state() right after set_state(s) equals s;
+        #   - replay identity: the same actions afterwards reproduce the original
+        #     continuation exactly on the same backend.
+        # After writing simulator state, recompute derived quantities (e.g. sim.forward()).
         raise NotImplementedError("D2: snapshot (docs/design.md §4)")

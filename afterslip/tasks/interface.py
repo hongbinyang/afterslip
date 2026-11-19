@@ -1,16 +1,14 @@
-"""The task interface: the only way research code touches a simulator (docs/design.md §3).
+"""Task interface: the single entry point from project code to a simulator (docs/design.md §3).
 
-Training, evaluation, snapshots and recording talk to a `TaskInterface`, never to
-robosuite or MuJoCo directly. A robot or task change (e.g. the FR3 track) is then a
-new adapter, not a rewrite.
+Training, evaluation, snapshots and recording use a `TaskInterface`, never robosuite or
+MuJoCo directly, so a robot or task change means a new adapter.
 
-Key data structures
-  Observation  dict of named low-dimensional arrays. State only: no camera images are
-               policy inputs (requirement FR-POL-04).
-  StepResult   what one control step returns, including the benchmark's own success flag.
+  Observation  dict of named low-dimensional arrays; no camera images (FR-POL-04).
+  StepResult   result of one control step, including the benchmark's success flag.
 
 Snapshots (`get_state` / `set_state`) are part of the contract but are designed and
-implemented in increment D2 (design §4); D1 adapters may leave them unimplemented.
+implemented in increment D2 (docs/design.md §4); adapters may leave them unimplemented
+until then.
 """
 
 from __future__ import annotations
@@ -43,7 +41,7 @@ class StepResult:
     reward: float
     success: bool
     timeout: bool
-    info: Dict[str, Any] = field(default_factory=dict)
+    info: dict[str, Any] = field(default_factory=dict)
 
     @property
     def done(self) -> bool:
@@ -78,7 +76,7 @@ class TaskInterface(Protocol):
         """
         ...
 
-    def camera_pose(self, camera: str) -> Dict[str, Any]:
+    def camera_pose(self, camera: str) -> dict[str, Any]:
         """World pose of a named camera: {"pos": 3 floats, "xmat": 9 floats (row-major rotation)}.
 
         Recorded in every video's metadata (design §5.2).
@@ -86,9 +84,9 @@ class TaskInterface(Protocol):
         ...
 
     def get_state(self) -> Any:
-        """Snapshot of the full environment state (increment D2, design §4)."""
+        """Snapshot of the full environment state (docs/design.md §4)."""
         ...
 
     def set_state(self, snapshot: Any) -> Observation:
-        """Restore a snapshot and return the observation (increment D2, design §4)."""
+        """Restore a snapshot and return the observation (docs/design.md §4)."""
         ...
