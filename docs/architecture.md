@@ -16,13 +16,13 @@ flowchart LR
 
 The system has **12 components in five layers**, plus a run record shared by all of them.
 
-| Layer | Component | Purpose | Status (2026-11-18) |
+| Layer | Component | Purpose | Status (2026-11-19) |
 |---|---|---|---|
 | A. Foundation | 1. Environment and tooling | Locked environment, Makefile, tests, CI | Partly exists: locks and Makefile validated on macOS only; Linux install and CI not yet validated (M0 0.0c) |
 | | 2. Artifact registry | Verified checkpoints, demonstrations, robot models, with hashes and licenses | Planned (M0 0.1, 0.2) |
-| B. Simulation | 3. Task interface and adapters | The only door to the simulator; Core (robosuite Can) and FR3 (MuJoCo) adapters | Skeleton exists; implementation in M0 D1; FR3 adapter in F0 |
-| | 4. Snapshot | Save and restore the full environment state | Planned (M0 D2, M2); a simulator-state-only diagnostic exists and fails as expected |
-| | 5. Observer recorder | Videos from one fixed camera, with metadata | Skeleton exists; implementation in M0 D1 |
+| B. Simulation | 3. Task interface and adapters | The only door to the simulator; Core (robosuite Can) and FR3 (MuJoCo) adapters | Core adapter exists (M0 D1); FR3 adapter in F0 |
+| | 4. Snapshot | Save and restore the full environment state | In-memory snapshots on one backend exist (M0 D2); serialization and hashing in M2. A simulator-state-only diagnostic fails as expected |
+| | 5. Observer recorder | Videos from one fixed camera, with metadata | Exists (M0 D1) |
 | C. Experiment building blocks | 6. Controllers | Fixed reference controller (scripted or π₀, chosen at M0) that reaches disturbance triggers; recovery controller that labels states | Planned (M0 0.5a, M2) |
 | | 7. Disturbances | Triggers (when) and operators (what): drop, misgrasp, knock | Planned (M2) |
 | | 8. Intervention-state bank | Generated disturbed states, recoverability labels, train/validation/test splits, hashes, test-access guard | Planned (M2) |

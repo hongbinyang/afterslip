@@ -120,7 +120,11 @@ Two properties are tested separately:
 
 ### 4.4 Format
 
-- In-memory: a frozen dataclass `Snapshot` of NumPy arrays and scalars plus a `schema_version`.
+- In-memory (increment D2, milestone 0.4b): the frozen dataclass `Snapshot` in `afterslip/tasks/interface.py`, with the groups `physics`, `task`, `controller`, `rng`, `obs_history`, `action_history` and `metadata` (`schema_version`, task, seed, step, `intervention`). A snapshot is an independent copy of the environment state.
+- **History semantics:** only what happened in the current episode, never padded. After reset: the reset observation and no actions. After n steps: `min(k, n + 1)` observations and `min(k, n)` actions, oldest first; `action_history[-1]` produced `obs_history[-1]`.
+- **Intervention metadata:** `metadata["intervention"]` is `None` until the disturbance code calls `record_intervention(...)` in an episode; it is then stored by `get_state`, cleared by `reset` and restored by `set_state`.
+- **Scope of D2:** in-memory snapshots on one backend, verified by restore identity and by replay identity of observations and hidden state (qpos, qvel, controller goal) at every step (test-plan T0.11). Serialization to disk and hashing follow in M2 (milestone 2.1, test-plan T2.1).
+- **Open limitation:** robosuite draws object placements from NumPy's global RNG, which every environment in a process shares. Saving and restoring it is exact for one environment; with several environments in one process (e.g. vectorized rollouts, FR-ENV-06) their draws interleave. Untested; to be resolved before vectorized bank generation (M2), e.g. one environment per process.
 - On disk (banks, M2): one compressed `.npz` per snapshot or one per bank file, plus a JSON manifest. Hashes are computed over a canonical serialization of the arrays (sorted keys, fixed dtype and byte order), not over file bytes, so compression changes do not change identity (test-plan T2.4).
 - No pickle, so files are portable and safe to load.
 

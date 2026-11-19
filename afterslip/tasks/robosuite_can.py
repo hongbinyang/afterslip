@@ -9,17 +9,23 @@ Notes:
     reached without success.
   - Observations keep low-dimensional entries only (FR-POL-04).
   - `MjSim.render` returns frames upside down (observed on macOS); `render` flips them.
+  - Snapshots hold MuJoCo's full integration state plus the Python-side state robosuite
+    keeps outside it (controller, gripper command, step counters, global NumPy RNG).
+    Limitation: the global RNG is shared by every environment in the process.
 """
 
 from __future__ import annotations
 
+import copy
+from collections import deque
 from dataclasses import dataclass
 from typing import Any
 
+import mujoco
 import numpy as np
 import robosuite as suite
 
-from afterslip.tasks.interface import Observation, StepResult
+from afterslip.tasks.interface import SNAPSHOT_SCHEMA_VERSION, Observation, Snapshot, StepResult
 
 
 @dataclass(frozen=True)
@@ -32,6 +38,7 @@ class CanTaskConfig:
     control_freq_hz: float = 20.0
     horizon: int = 300
     observer_camera: str = "agentview"  # candidate observer camera (design §5.2)
+    history_len: int = 1  # k observations/actions kept for snapshots; from the policy config
 
 
 class RobosuiteCanTask:
@@ -53,6 +60,10 @@ class RobosuiteCanTask:
             horizon=config.horizon,
         )
         self.action_dim = self._env.action_dim
+        self._seed: int | None = None
+        self._intervention: dict[str, Any] | None = None
+        self._obs_history: deque[Observation] = deque(maxlen=config.history_len)
+        self._action_history: deque[np.ndarray] = deque(maxlen=config.history_len)
 
     @property
     def benchmark_env(self) -> Any:
@@ -62,7 +73,13 @@ class RobosuiteCanTask:
     def reset(self, seed: int) -> Observation:
         np.random.seed(seed)
         raw = self._env.reset()
-        return self._state_obs(raw)
+        self._seed = seed
+        self._intervention = None
+        obs = self._state_obs(raw)
+        self._obs_history.clear()
+        self._action_history.clear()
+        self._obs_history.append(obs)
+        return {key: value.copy() for key, value in obs.items()}
 
     @staticmethod
     def _state_obs(raw: dict) -> Observation:
@@ -73,8 +90,13 @@ class RobosuiteCanTask:
         raw, reward, _done, info = self._env.step(action)
         success = bool(self._env._check_success())
         timeout = (not success) and self._env.timestep >= self.horizon
+
+        obs = self._state_obs(raw)
+        self._action_history.append(np.array(action, copy=True))
+        self._obs_history.append(obs)
+
         return StepResult(
-            observation=self._state_obs(raw),
+            observation={key: value.copy() for key, value in obs.items()},
             reward=float(reward),
             success=success,
             timeout=timeout,
@@ -93,23 +115,93 @@ class RobosuiteCanTask:
             "xmat": self._env.sim.data.cam_xmat[cam_id].tolist(),
         }
 
-    def get_state(self) -> Any:
-        # TODO(D2): return a full snapshot of the environment (docs/design.md §4).
-        # Implementation notes and pitfalls (increment D2):
-        #   - FR-ENV-04 requires every group: simulator, task, controller internal state,
-        #     RNG states, last-k observation/action history and intervention metadata.
-        #   - robosuite's `sim.get_state()` holds only time, qpos and qvel; the smoke test
-        #     `test_sim_state_only_snapshot_round_trip` shows that this alone does not
-        #     reproduce the continuation. design.md §4.3 lists candidate components to
-        #     investigate (controller goals, interpolators, counters, RNG, ...).
-        #   - Never store policy-internal state in the snapshot.
-        raise NotImplementedError("D2: snapshot (docs/design.md §4)")
+    # Everything mj_step reads: qpos, qvel, act, warm-start, controls, applied forces, time.
+    _PHYSICS_SPEC = mujoco.mjtState.mjSTATE_INTEGRATION
 
-    def set_state(self, snapshot: Any) -> Observation:
-        # TODO(D2): restore a snapshot and return the observation (docs/design.md §4).
-        # Two properties are tested separately:
-        #   - restore identity: get_state() right after set_state(s) equals s;
-        #   - replay identity: the same actions afterwards reproduce the original
-        #     continuation exactly on the same backend.
-        # After writing simulator state, recompute derived quantities (e.g. sim.forward()).
-        raise NotImplementedError("D2: snapshot (docs/design.md §4)")
+    def record_intervention(self, metadata: dict[str, Any]) -> None:
+        self._intervention = copy.deepcopy(metadata)
+
+    def get_state(self) -> Snapshot:
+        sim = self._env.sim
+        model = sim.model._model
+        data = sim.data._data
+        physics = np.empty(mujoco.mj_stateSize(model, self._PHYSICS_SPEC))
+        mujoco.mj_getState(model, data, physics, self._PHYSICS_SPEC)
+        task_state = {
+            "timestep": self._env.timestep,
+            "cur_time": self._env.cur_time,
+            "done": self._env.done,
+        }
+        robot = self._env.robots[0]
+        controller_bundle: dict[str, Any] = {
+            "gripper_action": robot.gripper.current_action.copy(),
+            # Controller attributes persist across episodes, so all scalar/array ones are saved.
+            "arm": {
+                key: copy.deepcopy(value)
+                for key, value in vars(robot.controller).items()
+                if isinstance(value, (np.ndarray, float, int, bool))
+            },
+        }
+
+        obs_history: tuple[Observation, ...] = tuple(
+            copy.deepcopy(obs) for obs in self._obs_history
+        )
+        action_history: tuple[np.ndarray, ...] = tuple(
+            np.asarray(act).copy() for act in self._action_history
+        )
+        metadata: dict[str, Any] = {
+            "schema_version": SNAPSHOT_SCHEMA_VERSION,
+            "task": self.config.env_name,
+            "seed": self._seed,
+            "step": self._env.timestep,
+            "intervention": copy.deepcopy(self._intervention),
+        }
+
+        return Snapshot(
+            physics={"integration": physics},
+            task=task_state,
+            controller=controller_bundle,
+            rng={"numpy_global": copy.deepcopy(np.random.get_state())},
+            obs_history=obs_history,
+            action_history=action_history,
+            metadata=metadata,
+        )
+
+    def set_state(self, snapshot: Snapshot) -> Observation:
+        sim = self._env.sim
+        model = sim.model._model
+        data = sim.data._data
+
+        physics = snapshot.physics["integration"]
+
+        # mj_forward recomputes derived quantities but overwrites the warm-start
+        # (qacc_warmstart), so the state is set again afterwards.
+        mujoco.mj_setState(model, data, physics.copy(), self._PHYSICS_SPEC)
+        mujoco.mj_forward(model, data)
+        mujoco.mj_setState(model, data, physics.copy(), self._PHYSICS_SPEC)
+
+        task_state = snapshot.task
+        step_val = int(task_state["timestep"])
+        self._env.timestep = step_val
+        self._env.cur_time = snapshot.task["cur_time"]
+        self._env.done = bool(task_state["done"])
+
+        robot = self._env.robots[0]
+        robot.gripper.current_action = snapshot.controller["gripper_action"].copy()
+        for key, value in snapshot.controller["arm"].items():
+            setattr(robot.controller, key, copy.deepcopy(value))
+
+        np.random.set_state(copy.deepcopy(snapshot.rng["numpy_global"]))
+
+        self._obs_history.clear()
+        for obs in snapshot.obs_history:
+            self._obs_history.append(copy.deepcopy(obs))
+
+        self._action_history.clear()
+        for act in snapshot.action_history:
+            self._action_history.append(np.asarray(act).copy())
+
+        self._seed = snapshot.metadata["seed"]
+        self._intervention = copy.deepcopy(snapshot.metadata["intervention"])
+
+        return {key: value.copy() for key, value in snapshot.obs_history[-1].items()}
