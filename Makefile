@@ -59,7 +59,7 @@ ENV_PYTHON := $(CONDA_BASE)/envs/$(ENV)/bin/python
 UV_COMPILE := uv pip compile requirements.in --override requirements-overrides.txt \
               --python-version $(PYTHON_VERSION) --generate-hashes --quiet
 
-.PHONY: help platform check-platform check-tools lock env sync install setup test smoke format lint remove-env
+.PHONY: help platform check-platform check-tools lock env sync install setup test smoke format lint typecheck remove-env
 
 help:  ## List the available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -177,3 +177,6 @@ format:  ## Auto-format all Python code and apply safe lint fixes
 lint:  ## Check formatting and lint rules without changing files (what CI runs)
 	"$(ENV_PYTHON)" -m ruff format --check .
 	"$(ENV_PYTHON)" -m ruff check .
+
+typecheck:  ## Static type check of the package with mypy (settings in pyproject.toml)
+	"$(ENV_PYTHON)" -m mypy afterslip

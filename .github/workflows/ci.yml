@@ -1,0 +1,66 @@
+# Continuous integration (milestone 0.0c, test-plan T0.2; docs/setup.md).
+# On every push and pull request: install from the lock files on Linux x86-64 CPU,
+# then lint, type check and run the full test suite with headless OSMesa rendering.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-cpu:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash -el {0}  # login shell, so conda is on PATH
+    env:
+      # Headless CPU rendering for robosuite and MuJoCo (docs/setup.md §2).
+      MUJOCO_GL: osmesa
+      PYOPENGL_PLATFORM: osmesa
+    steps:
+      - uses: actions/checkout@v4
+
+      # System libraries: OSMesa for rendering; GLib for OpenCV (imported by robosuite);
+      # a C toolchain and CMake to build egl-probe (a robomimic dependency without wheels).
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake libosmesa6-dev libgl1 libglib2.0-0
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          auto-activate-base: true
+          activate-environment: ""
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: requirements-*.lock
+
+      - name: Lock tools
+        run: uv tool install conda-lock==4.1.0
+
+      - name: Install from locks
+        run: |
+          make platform
+          make setup
+
+      - name: Lint
+        run: make lint
+
+      - name: Type check
+        run: make typecheck
+
+      - name: Tests
+        run: make test

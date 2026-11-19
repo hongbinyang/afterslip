@@ -18,7 +18,7 @@ The system has **12 components in five layers**, plus a run record shared by all
 
 | Layer | Component | Purpose | Status (2026-11-19) |
 |---|---|---|---|
-| A. Foundation | 1. Environment and tooling | Locked environment, Makefile, tests, CI | Partly exists: locks and Makefile validated on macOS only; Linux install and CI not yet validated (M0 0.0c) |
+| A. Foundation | 1. Environment and tooling | Locked environment, Makefile, tests, CI | Exists: locks and Makefile validated on macOS and Linux x86-64 CPU (container); CI workflow on GitHub Actions (M0 0.0c) |
 | | 2. Artifact registry | Verified checkpoints, demonstrations, robot models, with hashes and licenses | Planned (M0 0.1, 0.2) |
 | B. Simulation | 3. Task interface and adapters | The only door to the simulator; Core (robosuite Can) and FR3 (MuJoCo) adapters | Core adapter exists (M0 D1); FR3 adapter in F0 |
 | | 4. Snapshot | Save and restore the full environment state | In-memory snapshots on one backend exist (M0 D2); serialization and hashing in M2. A simulator-state-only diagnostic fails as expected |

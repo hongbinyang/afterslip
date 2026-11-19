@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import imageio
-import numpy as np
+import numpy.typing as npt
 
 from afterslip.tasks.interface import TaskInterface
 
@@ -70,7 +70,7 @@ class ObserverRecorder:
         self.height = height
         self.fps = fps
         self.out_dir = Path(out_dir)
-        self._frames: list[np.ndarray] = []
+        self._frames: list[npt.ArrayLike] = []  # what imageio.mimsave accepts
         self._meta: EpisodeMeta | None = None
         self._camera_pose: dict | None = None
 

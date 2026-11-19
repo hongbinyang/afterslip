@@ -27,17 +27,17 @@ The upstream install instructions use Linux-only steps (`apt-get`, EGL via `/dev
 | RL fine-tuning algorithm | ReinFlow reference implementation | Pinned git commit **[to record, 0.2a]** | github.com/ReinFlow/ReinFlow, `release` branch, MIT license (stated in repo). No tagged releases, so a commit hash is pinned |
 | Configuration | Hydra + OmegaConf | hydra-core 1.3.2, omegaconf 2.3.0 **[candidate]** | Used by upstream; our configs follow the same system |
 | Experiment tracking | Local file logger (always on) | — | FR-TRK-02. W&B (upstream pins `wandb==0.17.7`) is an optional plug-in, off by default |
-| Rendering (headless) | EGL (GPU) or OSMesa (CPU fallback) | System libraries | Needed for videos (FR-EVAL-06) and image observations |
+| Rendering (headless) | EGL (GPU) or OSMesa (CPU fallback) | System libraries; OSMesa from Ubuntu `libosmesa6-dev` (tested, §6.5) | Needed for videos (FR-EVAL-06) and image observations |
 | Testing | pytest (markers `unit`, `integration`, `smoke`), pytest-timeout, hypothesis (property-based tests) | pytest 8.3.5 installed locally; others pinned at 0.0b | NFR-COD-01; levels and gates in [test-plan.md](test-plan.md) |
-| Code quality | ruff (lint + format), mypy (type checks) | Pinned at 0.0b | NFR-COD-01 (type hints) |
+| Code quality | ruff (lint + format), mypy (type checks) | Pinned in the pip locks; `make lint`, `make typecheck` | NFR-COD-01 (type hints) |
 | Video recording | MuJoCo offscreen renderer → frames → imageio + imageio-ffmpeg → MP4 (H.264) | imageio 2.35.1, imageio-ffmpeg 0.5.1 (local) | FR-EVAL-06; see §2.1 |
-| CI | GitHub Actions, `ubuntu-latest` | — | Candidate route for the Linux CPU smoke test (0.0c) |
+| CI | GitHub Actions, `ubuntu-22.04`, CPU | `.github/workflows/ci.yml` | On every push and pull request: install from the locks, `make lint`, `make typecheck`, `make test` with OSMesa rendering (0.0c, T0.2) |
 
 Other pinned upstream dependencies (candidates): `einops==0.8.0`, `imageio==2.35.1`, `av==12.3.0`, `matplotlib==3.7.5`, `pandas==2.0.3`, `seaborn==0.13.2`, `tqdm==4.66.5`, `gdown==5.2.0`. `numpy` is not pinned upstream and must be pinned here.
 
 ### 2.1 Video recording
 
-- **Rendering backend by platform:** on macOS, robosuite 1.4.1's offscreen renderer (`MjSim.render`) uses the native OpenGL context (CGL); this was tested in §7. On headless Linux the expected backends are EGL with a GPU, or OSMesa on CPU (`MUJOCO_GL=egl` or `osmesa`); **untested**. The backend is recorded in every video's metadata.
+- **Rendering backend by platform:** on macOS, robosuite 1.4.1's offscreen renderer (`MjSim.render`) uses the native OpenGL context (CGL); this was tested in §7. On headless Linux the backends are EGL with a GPU, or OSMesa on CPU (`MUJOCO_GL=egl` or `osmesa`, with `PYOPENGL_PLATFORM` set to the same value). OSMesa was tested on Linux x86-64 CPU (§6.5), including the upright-frame check; EGL is **untested**. The backend is recorded in every video's metadata.
 - **Cameras:** policies are state-based (decision D-2), so no camera is a policy input. Videos use **one observer camera**: a fixed, third-person view that records the scene and is never seen by the policy. Core uses robosuite's `agentview`; the FR3 track defines an equivalent fixed camera in its own scene file, since the Menagerie FR3 model contains no camera. Rendering for recording must not change simulator state or random number streams.
 - **Settings in config (candidates):** 256×256 for routine evidence and 512×512 for demos; 20 fps (equal to the 20 Hz control frequency, one frame per control step).
 - **Metadata per video:** episode or bank-state ID, seed, policy checkpoint hash, suite, camera, fps, resolution, backend, frame count and episode length (see milestones.md, "Video").
@@ -132,6 +132,7 @@ All steps are `make` targets, defined and commented in the [`Makefile`](../Makef
    - uv: e.g. `brew install uv` (macOS) or the official installer
    - conda-lock: `uv tool install conda-lock`
    - GNU make (preinstalled on macOS and most Linux distributions)
+   - Linux only, system libraries (Ubuntu/Debian names): `sudo apt-get install build-essential cmake libosmesa6-dev libgl1 libglib2.0-0`. A C toolchain and CMake build `egl-probe` (a robomimic dependency without wheels); OSMesa renders headless on CPU; GLib is needed by OpenCV, which robosuite imports
 2. **Get the code and build the environment:**
 
 ```bash
@@ -144,6 +145,8 @@ conda activate afterslip
 make smoke          # quick check; expected today: 2 passed, 1 xfailed
 make test           # full suite
 ```
+
+On headless Linux, set the renderer before running tests: `export MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa` (CPU), or `egl` for both with a GPU. `make lint` and `make typecheck` run the same checks as CI.
 
 `make setup ENV=<name>` uses a different env name, e.g. for a clean trial next to an existing env. `make setup` stops if the env already exists.
 
@@ -169,7 +172,7 @@ make test           # full suite
 | Date | Platform | Tool versions | Result |
 |---|---|---|---|
 | 2026-11-18 | macOS 26.6, Apple Silicon | conda 26.3.2, uv 0.12.5, conda-lock 4.1.0, GNU make 3.81 | `make lock` succeeds for both platforms. Fresh `make setup` (also with `-j4`) succeeds; `make smoke`: 2 passed, 1 xfailed. Guards checked: failed preview stops; an extra package (`tabulate`) stops `make sync`; `remove-env` refuses `base`, the active env, and reports a missing env |
-| — | Linux x86-64 | — | **Not yet validated.** The Linux lock is generated but has not been installed on Linux. Validation happens with the Linux CPU smoke test in CI (milestone 0.0c) or on a Linux machine or container |
+| 2026-11-19 | Linux x86-64: Ubuntu 22.04 container (`--platform linux/amd64`, emulated on Apple Silicon), CPU only | Miniforge (conda 26.9.4), uv 0.12.5, conda-lock 4.1.0 | Same steps as CI from a clean container: system libraries above, fresh `make setup` succeeds (egl-probe 1.0.2 builds from source), `make lint` and `make typecheck` pass, `make test` with `MUJOCO_GL=osmesa`: 22 passed, 1 xfailed. First GitHub Actions run: pending |
 
 Tool versions are those observed on the tested machine; minimum supported tool versions are not established.
 
@@ -183,8 +186,9 @@ Filled in from actual runs (NFR-PORT-04). Each row records OS, hardware, backend
 |---|---|---|---|---|---|
 | 2026-11-16 | macOS 26.6 / Apple Silicon (arm64) | CPU sim; CGL rendering; torch MPS available | conda-forge Python 3.8.20; mujoco 3.2.3; robosuite 1.4.1; robomimic 0.3.0; torch 2.4.1; torchvision 0.19.1; gym 0.22.0; numpy 1.24.4; hydra-core 1.3.2; imageio 2.35.1 | Create `PickPlaceCan` (Panda, OSC_POSE, 20 Hz, H=300); 60 random steps; offscreen `agentview` video 256×256; sim-state-only snapshot round-trip | Env and video **pass** (action dim 7). **Observed failure:** the snapshot round-trip that restores the simulator state only does **not** reproduce the continuation (max abs state difference ≈ 0.037, differing from the first replayed step). Cause not yet isolated; leading hypothesis: controller or other environment-internal state not captured by `sim.get_state()` (milestone item 0.4b). No π₀ loaded; no upstream ReinFlow code installed |
 | 2026-11-16 | macOS 26.6 / Apple Silicon (arm64) | CPU sim; `mujoco.Renderer` (CGL) | Same env as above (mujoco 3.2.3); Menagerie commit `370c439` | FR3 track feasibility: load `franka_fr3/scene.xml`, list joints and actuators, step with position control, render 320×320 video | **Pass:** model loads (Menagerie states MuJoCo ≥ 3.1.3 required; 3.2.3 used); 7 arm joints, 7 position actuators, keyframe `home`; video renders. **Finding:** this model at this commit is arm only, with no gripper; grasping with it needs a hand model attached. Other FR3 model sources were not assessed. Spike only: no script committed, so the FR3 exercises stay open as hands-on learning |
+| 2026-11-19 | Ubuntu 22.04 / x86-64 (container, emulated on Apple Silicon) | CPU sim; OSMesa rendering | Installed from `conda-lock.yml` and `requirements-linux.lock`: conda-forge Python 3.8.20; mujoco 3.2.3; robosuite 1.4.1; robomimic 0.3.0; torch 2.4.1; torchvision 0.19.1; gym 0.22.0; numpy 1.24.4; imageio 2.35.1 | Full test suite (`make test`): task adapter, observer recorder, snapshots (restore and replay identity), smoke tests | **Pass:** 22 passed, 1 xfailed (the simulator-state-only diagnostic, expected). Upright-frame check passes with OSMesa. Native x86-64 and GitHub Actions confirmation: first CI run |
 
-**Reproducing the macOS check.** The checks are the smoke tests in [`tests/smoke/test_env.py`](../tests/smoke/test_env.py): `pytest -m smoke` in the `afterslip` env. Expected result on the tested configuration: 2 passed, 1 xfailed (the simulator-state-only snapshot round-trip, a known failure kept as a strict xfail until milestone item 0.4b resolves it). Generated files (videos, logs) go to pytest's temporary directory or `outputs/`, which is git-ignored; nothing generated is committed. The environment itself was built by hand, with the commands below; it is not yet reproducible from lock files:
+**Reproducing the macOS check.** The checks are the smoke tests in [`tests/smoke/test_env.py`](../tests/smoke/test_env.py): `pytest -m smoke` in the `afterslip` env. Expected result on the tested configuration: 2 passed, 1 xfailed (the simulator-state-only snapshot round-trip, a known failure kept as a strict xfail: simulator state alone is not the full snapshot; the full snapshot passes since milestone item 0.4b). Generated files (videos, logs) go to pytest's temporary directory or `outputs/`, which is git-ignored; nothing generated is committed. The environment itself was built by hand, with the commands below; it is not yet reproducible from lock files:
 
 ```bash
 conda create -n afterslip -c conda-forge --override-channels python=3.8 pip

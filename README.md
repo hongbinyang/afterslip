@@ -50,11 +50,12 @@ The research question is to be answered first on a standard benchmark: a Franka 
 
 ## Status
 
-**Early M0.** The first milestone is **M0 Verify**: confirm the pretrained checkpoints and datasets, their licenses, and a CPU smoke test. See requirements §10 and [docs/milestones.md](docs/milestones.md). What exists so far:
+**M0 in progress.** The first milestone is **M0 Verify**: confirm the pretrained checkpoints and datasets, their licenses, and a CPU smoke test. See requirements §10, [docs/milestones.md](docs/milestones.md), and the running results in [reports/M0.md](reports/M0.md). What exists so far:
 
-- a locked environment (`make setup`) validated on macOS Apple Silicon; the Linux lock exists but has **not yet been validated** on Linux
-- simulation smoke tests (`make smoke`)
-- a code skeleton for the task interface and the observer recorder, with integration tests that define the first increment; its implementation is **not yet done**, so those tests are marked as strict expected failures (they report as `xfailed`, which is not evidence that the code works)
+- a locked environment (`make setup`) validated on macOS Apple Silicon and on Linux x86-64 CPU (in a clean container)
+- CI on GitHub Actions (Linux CPU): lint, type check and the full test suite on every push; the first run is pending
+- the Can task adapter (robosuite `PickPlaceCan`, Panda), the fixed-camera observer recorder, and in-memory environment snapshots with exact restore and replay, each covered by integration tests
+- one expected failure remains by design: restoring the simulator state alone does not reproduce an episode, which is why the full snapshot exists
 - no pretrained policy has been loaded or verified yet
 
 ## Proposed stack
@@ -72,7 +73,8 @@ environment.yml      conda layer input (Python, pip)
 requirements.in      Python dependencies (input)
 requirements-overrides.txt   corrections to dependency metadata (input)
 conda-lock.yml, requirements-*.lock   generated lock files (make lock)
-afterslip/           the Python package: task interface, recorder (skeleton)
+.github/workflows/   CI configuration
+afterslip/           the Python package: task interface and Can adapter, recorder
 docs/
   explainer.md       the story, with animations
   explainer/         animated SVGs + make_svgs.py (regenerates them)
@@ -83,6 +85,7 @@ docs/
   milestones.md      work items, decision points and checks per milestone
   test-plan.md       how each check is verified
   setup.md           environment, stack, versions, package management
+reports/             milestone reports (M0.md: running results)
 tests/               smoke and integration tests
 outputs/             generated local results (git-ignored)
 ```
