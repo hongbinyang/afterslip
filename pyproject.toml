@@ -32,9 +32,10 @@ xfail_strict = true
 [tool.ruff]
 line-length = 100
 target-version = "py38"
-# Python sources only: the explainer SVG generator holds long inline SVG markup, and code
-# snippets in Markdown documents are illustrations, not project code.
-extend-exclude = ["docs/explainer", "*.md"]
+# Python sources only: the explainer SVG generator holds long inline SVG markup, code
+# snippets in Markdown documents are illustrations, and third_party/ holds pinned upstream
+# code that is used as published.
+extend-exclude = ["docs/explainer", "*.md", "third_party"]
 
 [tool.ruff.lint]
 # pycodestyle errors/warnings, pyflakes, import sorting, pyupgrade, bugbear, ruff-specific.

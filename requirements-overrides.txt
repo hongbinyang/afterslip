@@ -1,4 +1,4 @@
 # Overrides applied when compiling the pip locks (uv pip compile --override).
-# robomimic 0.3.0 requires egl-probe on every platform, but egl-probe only builds and is
+# robomimic requires egl-probe on every platform, but egl-probe only builds and is
 # only needed on Linux (EGL rendering). Restrict it to Linux so macOS installs work.
 egl-probe; sys_platform == "linux"

@@ -55,11 +55,14 @@ endif
 CONDA_BASE := $(shell conda info --base 2>/dev/null)
 ENV_PYTHON := $(CONDA_BASE)/envs/$(ENV)/bin/python
 
+# Upstream reference code (ReinFlow), a git submodule pinned to one commit.
+REINFLOW := third_party/ReinFlow
+
 # Common uv compile options: same inputs and overrides for every platform, with hashes.
 UV_COMPILE := uv pip compile requirements.in --override requirements-overrides.txt \
               --python-version $(PYTHON_VERSION) --generate-hashes --quiet
 
-.PHONY: help platform check-platform check-tools lock env sync install setup test smoke format lint typecheck remove-env
+.PHONY: help platform check-platform check-tools check-submodules lock env sync install setup test smoke format lint typecheck remove-env
 
 help:  ## List the available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -101,37 +104,50 @@ lock: check-tools  ## Regenerate conda-lock.yml and both pip locks from the inpu
 # Environment
 # ---------------------------------------------------------------------------
 
-env: check-platform check-tools  ## Create the conda env (name: ENV) from conda-lock.yml (fails if it exists)
+env: check-platform check-tools check-submodules  ## Create the conda env (name: ENV) from conda-lock.yml (fails if it exists)
 	@if [ -x "$(ENV_PYTHON)" ]; then \
 	  echo "Environment '$(ENV)' already exists. Use 'make sync', or 'make remove-env' first."; exit 1; \
 	fi
 	conda-lock install --name $(ENV) conda-lock.yml
 
-sync: check-platform check-tools  ## Make the env's Python packages exactly match the pip lock
+sync: check-platform check-tools check-submodules  ## Make the env's Python packages exactly match the pip lock
 	@test -x "$(ENV_PYTHON)" || { echo "Environment '$(ENV)' not found; run 'make env' first."; exit 1; }
-	@# Preview first. `uv pip sync` removes every package that is not in the lock. Two
-	@# kinds of removal are expected: Python's own packaging tools that the conda layer
+	@# Preview first. `uv pip sync` removes every package that is not in the lock. A version
+	@# change shows as a removal plus an install of the same name and is fine. Two kinds
+	@# of removal without reinstall are expected: Python's own packaging tools that the conda layer
 	@# brings (pip, setuptools, wheel; harmless, builds run in isolated environments), and
-	@# the afterslip package itself, which is reinstalled right after. Any other planned
-	@# removal means the env was modified by hand: stop and show it.
+	@# the two editable installs (afterslip, reinflow), which are reinstalled right after.
+	@# Any other planned removal means the env was modified by hand: stop and show it.
 	@# The preview's own exit status is checked first: if the preview fails (missing
 	@# lock, network error, broken env), stop instead of treating "no output" as safe.
 	@preview=$$(uv pip sync --python "$(ENV_PYTHON)" --dry-run $(PIP_LOCK) 2>&1); status=$$?; \
 	if [ $$status -ne 0 ]; then \
 	  echo "$$preview"; echo "Sync preview failed (exit $$status); nothing was changed."; exit 1; \
 	fi; \
-	unexpected=$$(printf '%s\n' "$$preview" | grep '^ - ' | grep -Ev '^ - (pip|setuptools|wheel|afterslip)=='); \
+	unexpected=$$(printf '%s\n' "$$preview" | awk ' \
+	  /^ \+ / { split($$2, a, /[=@ ]/); added[a[1]] = 1 } \
+	  /^ - /  { split($$2, r, /[=@ ]/); removed[r[1]] = 1 } \
+	  END { for (n in removed) \
+	          if (!(n in added) && n !~ /^(pip|setuptools|wheel|afterslip|reinflow)$$/) print n }'); \
 	if [ -n "$$unexpected" ]; then \
-	  echo "Sync would uninstall packages that are not packaging tools:"; echo "$$unexpected"; \
+	  echo "Sync would uninstall packages that are not in the lock:"; echo "$$unexpected"; \
 	  echo "Nothing was changed. Check the env, or recreate it: make remove-env, then make setup"; exit 1; \
 	fi
 	uv pip sync --python "$(ENV_PYTHON)" $(PIP_LOCK)
-	@# Sync removed the project itself (it is not in the lock); reinstall it.
+	@# Sync removed the editable installs (they are not in the lock); reinstall them.
 	$(MAKE) --no-print-directory install
 
-install:  ## Install the afterslip package itself (editable, no extra dependencies)
-	@# --no-deps: every dependency comes from the lock, never from pyproject.toml.
-	uv pip install --python "$(ENV_PYTHON)" --no-deps -e .
+install: check-submodules  ## Install afterslip and the pinned upstream code (editable, no extra dependencies)
+	@# --no-deps: every dependency comes from the lock, never from pyproject.toml. The
+	@# upstream code's own extras (d4rl -> mujoco-py) are deliberately not installed.
+	uv pip install --python "$(ENV_PYTHON)" --no-deps -e . -e $(REINFLOW)
+
+check-submodules:
+	@# The upstream code is a git submodule pinned to one commit (ARTIFACTS.md §3).
+	@# A prerequisite of env, sync and install, so a missing submodule stops before any
+	@# change to an environment.
+	@test -f "$(REINFLOW)/pyproject.toml" || { \
+	  echo "$(REINFLOW) is missing; run: git submodule update --init"; exit 1; }
 
 setup:  ## Fresh setup: create env, install locked packages and the project
 	@# Run the steps strictly in order, even under `make -j` (parallel make would

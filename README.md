@@ -56,7 +56,8 @@ The research question is to be answered first on a standard benchmark: a Franka 
 - CI on GitHub Actions (Linux CPU): lint, type check and the full test suite on every push
 - the Can task adapter (robosuite `PickPlaceCan`, Panda), the fixed-camera observer recorder, and in-memory environment snapshots with exact restore and replay, each covered by integration tests
 - one expected failure remains by design: restoring the simulator state alone does not reproduce an episode, which is why the full snapshot exists
-- no pretrained policy has been loaded or verified yet
+- the upstream reference code (ReinFlow) pinned as a submodule, installed and running the Can task
+- no pretrained policy has been loaded yet: the released Can flow checkpoint is image-based, while the project uses state-based policies; so a state-based π₀ will be pretrained with the upstream code (Path 2; see [reports/M0.md](reports/M0.md))
 
 ## Proposed stack
 
@@ -87,7 +88,8 @@ docs/
   test-plan.md       how each check is verified
   setup.md           environment, stack, versions, package management
 reports/             milestone reports (M0.md: running results)
-tests/               smoke and integration tests
+tests/               unit, integration and smoke tests
+third_party/ReinFlow pinned upstream reference code (git submodule; clone with --recurse-submodules)
 outputs/             generated local results (git-ignored)
 ```
 

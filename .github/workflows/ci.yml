@@ -27,6 +27,8 @@ jobs:
       PYOPENGL_PLATFORM: osmesa
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true  # third_party/ReinFlow, pinned upstream code
 
       # System libraries: OSMesa for rendering; GLib for OpenCV (imported by robosuite);
       # a C toolchain and CMake to build egl-probe (a robomimic dependency without wheels).

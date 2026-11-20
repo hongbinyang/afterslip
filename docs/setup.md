@@ -19,21 +19,36 @@ The upstream install instructions use Linux-only steps (`apt-get`, EGL via `/dev
 | Layer | Choice | Version | Source / note |
 |---|---|---|---|
 | Language | Python | 3.8 **[candidate]** | Version used by the upstream install guide (`requires-python >= 3.8`). See §5, decision D-1 |
-| Physics engine | MuJoCo via the official `mujoco` Python bindings | 3.2.3 resolved for robosuite 1.4.1 on macOS + Python 3.8 (§7); Linux **[to confirm, 0.2a]** | FR-ENV-01: only physics engine |
-| Robot simulation framework | robosuite | 1.4.1 **[candidate]** | Upstream pins `v1.4.1` |
-| Task suite and demonstrations | robomimic (task: Can) | 0.3.0 **[candidate]** | Upstream guide pins `robomimic==0.3.0`; its `pyproject.toml` installs robomimic from git, unpinned. The mismatch is resolved at 0.2a by pinning an exact version or commit |
+| Physics engine | MuJoCo via the official `mujoco` Python bindings | 3.2.3, pinned in the pip locks; tested on macOS and Linux x86-64 (§6.5) | FR-ENV-01: only physics engine |
+| Robot simulation framework | robosuite | 1.4.1 | Upstream pins `v1.4.1` |
+| Task suite and demonstrations | robomimic (task: Can) | v0.4.0, git commit `7c66e7a41b5d9dcc905b1a68346bfee1b49b79c9` | Not on PyPI; installed from git by commit (§2.2, D-3) |
 | Environment API | gym | 0.22.0 **[candidate]** | Pinned upstream. Our task interface (FR-ENV-03) exposes a Gymnasium-style API and wraps whatever the upstream environment uses |
 | Deep learning | PyTorch | ≥ 2.4.0 upstream; exact version pinned at 0.0b | Device chosen by config: `cpu`, `cuda`, `mps` (NFR-PORT-02) |
-| RL fine-tuning algorithm | ReinFlow reference implementation | Pinned git commit **[to record, 0.2a]** | github.com/ReinFlow/ReinFlow, `release` branch, MIT license (stated in repo). No tagged releases, so a commit hash is pinned |
+| RL fine-tuning algorithm | ReinFlow reference implementation | `release` branch, commit `e722e151bed767f3ffef47527cf697f2358af55d` (2026-04-24) | Git submodule `third_party/ReinFlow`, installed editable without its dependencies (§2.2). MIT license (repository `LICENSE`) |
 | Configuration | Hydra + OmegaConf | hydra-core 1.3.2, omegaconf 2.3.0 **[candidate]** | Used by upstream; our configs follow the same system |
-| Experiment tracking | Local file logger (always on) | — | FR-TRK-02. W&B (upstream pins `wandb==0.17.7`) is an optional plug-in, off by default |
+| Experiment tracking | Local file logger (always on) | — | FR-TRK-02. W&B (`wandb==0.17.7`, as pinned upstream) is installed because the upstream training code imports it, and is switched off by default (`afterslip.upstream`) |
 | Rendering (headless) | EGL (GPU) or OSMesa (CPU fallback) | System libraries; OSMesa from Ubuntu `libosmesa6-dev` (tested, §6.5) | Needed for videos (FR-EVAL-06) and image observations |
 | Testing | pytest (markers `unit`, `integration`, `smoke`), pytest-timeout, hypothesis (property-based tests) | pytest 8.3.5 installed locally; others pinned at 0.0b | NFR-COD-01; levels and gates in [test-plan.md](test-plan.md) |
 | Code quality | ruff (lint + format), mypy (type checks) | Pinned in the pip locks; `make lint`, `make typecheck` | NFR-COD-01 (type hints) |
 | Video recording | MuJoCo offscreen renderer → frames → imageio + imageio-ffmpeg → MP4 (H.264) | imageio 2.35.1, imageio-ffmpeg 0.5.1 (local) | FR-EVAL-06; see §2.1 |
 | CI | GitHub Actions, `ubuntu-22.04`, CPU | `.github/workflows/ci.yml` | On every push and pull request: install from the locks, `make lint`, `make typecheck`, `make test` with OSMesa rendering (0.0c, T0.2) |
 
-Other pinned upstream dependencies (candidates): `einops==0.8.0`, `imageio==2.35.1`, `av==12.3.0`, `matplotlib==3.7.5`, `pandas==2.0.3`, `seaborn==0.13.2`, `tqdm==4.66.5`, `gdown==5.2.0`. `numpy` is not pinned upstream and must be pinned here.
+### 2.2 Upstream code and its dependencies (milestone 0.2a)
+
+The upstream code is pinned as a git submodule and installed by `make install` with `--no-deps`, so every dependency comes from our locks. Its own `pyproject.toml` is the reference for versions; differences are listed here.
+
+| Package | Upstream (ReinFlow `e722e15`) | This project | Reason |
+|---|---|---|---|
+| robosuite | git tag `v1.4.1` (extra `robomimic`) | 1.4.1 from PyPI | Same version |
+| robomimic | git, unpinned HEAD (extra `robomimic`) | v0.4.0, git commit `7c66e7a` | PyPI 0.3.0 imports `mujoco_py` unconditionally in its robosuite wrapper, so the Can environment fails without mujoco-py; v0.4.0 guards that import. A pinned commit replaces the moving HEAD |
+| MuJoCo bindings | not pinned for Robomimic | 3.2.3 | Resolved for robosuite 1.4.1; mujoco-py is **not** needed for Robomimic Can (tested, 0.2a) |
+| d4rl, cython, patchelf (extra `robomimic`) | installed | **not installed** | d4rl requires mujoco-py. It is imported only by upstream's `script/run.py` launcher and by the dummy environment used for image or rendered runs; the state-based Robomimic path uses neither. Our training entry point will import the upstream agents directly (M1) |
+| wandb | 0.17.7 | 0.17.7 | Imported at module level by the training agents; disabled by default |
+| gdown, tqdm, matplotlib, hydra-core, omegaconf, einops, gym, imageio | pinned | same pins | Imported by the upstream code |
+| av, pandas, seaborn, pypdf, pretty_errors | pinned | not installed | Not imported by the flow-policy and Robomimic code paths (plotting and utility scripts only). `av` is assessed separately as the video encoder (ARTIFACTS.md §5, G1) |
+
+The upstream code reads `REINFLOW_DIR`, `REINFLOW_DATA_DIR` and `REINFLOW_LOG_DIR` at import time; `afterslip.upstream.configure_reinflow()` sets them (data and logs under the git-ignored `outputs/reinflow/`) and must run before any upstream import. The upstream packages have generic top-level names (`agent`, `model`, `env`, `util`); project code imports them only after that call.
+
 
 ### 2.1 Video recording
 
@@ -52,7 +67,7 @@ All entries are candidates until recorded and verified in `ARTIFACTS.md`. An art
 
 | Artifact | Candidate source | License status |
 |---|---|---|
-| Pretrained flow-matching policy π₀ for Robomimic Can (1-ReFlow) | ReinFlow checkpoints on Hugging Face: `huggingface.co/datasets/ReinFlow/ReinFlow-data-checkpoints-logs`; some configs expect the file to be placed manually under `${REINFLOW_LOG_DIR}/robomimic/pretrain/can/` | Not stated on pages read; to verify |
+| Pretrained flow-matching policy π₀ for Robomimic Can (1-ReFlow) | ReinFlow checkpoints on Hugging Face: `huggingface.co/datasets/ReinFlow/ReinFlow-data-checkpoints-logs` (dataset card: MIT). The released Can 1-ReFlow checkpoint `log/log_robomimic_pretrained/can/ReFlow/state_2000.pt` is **image-based** (verified 2026-11-19: ViT image encoder weights; loaded by the image config), so it does not fit D-2 | Recorded in `ARTIFACTS.md` §3; not in use |
 | Normalization statistics for Can | Same source (`normalization.npz`) | To verify |
 | Robomimic Can demonstrations | Downloaded by the upstream pretraining scripts (simplified versions of the robomimic datasets); exact host to confirm | To verify (robomimic and its datasets) |
 | Robot model (Franka Panda) and Can scene | Bundled with robosuite | robosuite license; to record |
@@ -60,7 +75,7 @@ All entries are candidates until recorded and verified in `ARTIFACTS.md`. An art
 | Franka Hand (gripper) for the FR3 track | Menagerie `franka_emika_panda` includes a hand model; attaching it to the FR3 flange is a candidate approach | To verify; the tested Menagerie `franka_fr3` model at commit `370c439` has **no gripper** (§7); other FR3 models are not assessed |
 | MuJoCo Menagerie Panda | github.com/google-deepmind/mujoco_menagerie | Per-model license; to verify if used |
 
-Known configuration of the upstream Can fine-tuning setup (the image-based 1-ReFlow config read so far; under decision D-2 the Core track needs the **state-based** Can configuration and checkpoint, to be read and verified at 0.2b):
+Known configuration of the upstream Can fine-tuning setup (the image-based 1-ReFlow config; upstream has no state-based 1-ReFlow config for Can. Its state-based Can configs, for other policy types, use 23-dimensional observations: `robot0_eef_pos`, `robot0_eef_quat`, `robot0_gripper_qpos`, `object`):
 - `action_dim` 7, `horizon_steps` 4, `act_steps` 4, `cond_steps` 1, `denoising_steps` 1, `max_episode_steps` 300
 - Low-dimensional keys: `robot0_eef_pos`, `robot0_eef_quat`, `robot0_gripper_qpos`
 - Image (image config only; not used under D-2): `robot0_eye_in_hand_image`, 96×96 RGB
@@ -101,8 +116,8 @@ This approach is a candidate until a clean install from lock files has been test
 | ID | Decision | Options | Recommendation |
 |---|---|---|---|
 | D-1 | Python version | (a) 3.8, as tested upstream; (b) 3.10 | (a) for M0. Reproducing π₀ (FR-POL-01) is most reliable on the upstream-tested stack. Python 3.8 is past end-of-life, so a move to 3.10 is reconsidered after M0, once reproduction has passed, using that result as the regression check |
-| D-2 | Observation modality for π₀ | (a) state (low-dimensional); (b) image | **Decided 2026-11-17: (a) state-based**, for both tracks. Reasons: lower complexity and compute; the research question (recovery vs retention) stays separate from perception; the Menagerie FR3 model has no camera. Consequences: Core needs a licensed state-based Can checkpoint (verified at 0.2b), otherwise Path 2 (pretrain a state-based π₀); policies receive exact object poses from the simulator, a stated limitation for any real-robot transfer (sim-to-real remains out of scope, requirements §3.2); videos need one observer camera only |
-| D-3 | robomimic pin | PyPI `0.3.0` or a git commit | Whichever the upstream Can checkpoint was trained with, if it can be determined (0.2a) |
+| D-2 | Observation modality for π₀ | (a) state (low-dimensional); (b) image | **Decided 2026-11-17: (a) state-based**, for both tracks. Reasons: lower complexity and compute; the research question (recovery vs retention) stays separate from perception; the Menagerie FR3 model has no camera. Consequences: Core needs a licensed state-based Can checkpoint, otherwise Path 2 (pretrain a state-based π₀). **2026-11-19:** the released Can flow checkpoint is image-based, and the lead decided to keep D-2 and follow Path 2 (design.md §10); policies receive exact object poses from the simulator, a stated limitation for any real-robot transfer (sim-to-real remains out of scope, requirements §3.2); videos need one observer camera only |
+| D-3 | robomimic pin | PyPI `0.3.0` or a git commit | **Resolved at 0.2a:** v0.4.0 by commit `7c66e7a` (§2.2). PyPI 0.3.0 cannot create the Can environment without mujoco-py; the released Can flow checkpoint is image-based and not used under D-2, so no training version needs to be matched |
 
 ### 4.4 Generated files
 
@@ -136,7 +151,7 @@ All steps are `make` targets, defined and commented in the [`Makefile`](../Makef
 2. **Get the code and build the environment:**
 
 ```bash
-git clone https://github.com/hongbinyang/afterslip.git
+git clone --recurse-submodules https://github.com/hongbinyang/afterslip.git
 cd afterslip
 make check-tools    # confirms conda, uv and conda-lock are available
 make platform       # shows the detected OS/CPU and the pip lock that will be used
@@ -171,6 +186,7 @@ On headless Linux, set the renderer before running tests: `export MUJOCO_GL=osme
 
 - `make sync` previews the change first. It stops without changing anything if the preview fails, or if it would uninstall anything other than the packaging tools (pip, setuptools, wheel) and the project itself, which it reinstalls.
 - `make setup` runs its steps strictly in order, also under parallel `make -j`.
+- `make env`, `make sync` and `make install` first check that the upstream submodule is present; if it is missing they stop with `git submodule update --init` before changing any environment (checked 2026-11-19: the package list of an existing env is unchanged, and no env is created).
 - `make remove-env` deletes only the named env, refuses `base` and the currently active env, and does nothing if the env does not exist.
 
 ### 6.5 Tested status
@@ -180,10 +196,11 @@ On headless Linux, set the renderer before running tests: `export MUJOCO_GL=osme
 | 2026-11-18 | macOS 26.6, Apple Silicon | conda 26.3.2, uv 0.12.5, conda-lock 4.1.0, GNU make 3.81 | `make lock` succeeds for both platforms. Fresh `make setup` (also with `-j4`) succeeds; `make smoke`: 2 passed, 1 xfailed. Guards checked: failed preview stops; an extra package (`tabulate`) stops `make sync`; `remove-env` refuses `base`, the active env, and reports a missing env |
 | 2026-11-19 | Linux x86-64: Ubuntu 22.04 container (`--platform linux/amd64`, emulated on Apple Silicon), CPU only | Miniforge (conda 26.9.4), uv 0.12.5, conda-lock 4.1.0 | Same steps as CI from a clean container: system libraries above, fresh `make setup` succeeds (egl-probe 1.0.2 builds from source), `make lint` and `make typecheck` pass, `make test` with `MUJOCO_GL=osmesa`: 22 passed, 1 xfailed. |
 | 2026-11-19 | Linux x86-64: GitHub Actions `ubuntu-22.04` runner, CPU | Miniforge (latest), uv 0.12.5, conda-lock 4.1.0 | `.github/workflows/ci.yml` on commit `bc56825` | [Run 44641939078](https://github.com/hongbinyang/afterslip/actions/runs/44641939078): install from the locks, `make lint`, `make typecheck`, `make test` all pass |
+| 2026-11-19 | macOS 26.6 Apple Silicon; Linux x86-64 (Ubuntu 22.04 container, emulated) | as above | 0.2a: fresh `make setup` with the ReinFlow submodule and robomimic v0.4.0 from git; `make lint`, `make typecheck`, `make test` (including T0.4, upstream Can environment) | **Pass** on both: 30 passed, 1 xfailed. The `make sync` guard was corrected to accept version changes (a removal plus an install of the same name) and still stops on a stray package (`tabulate`) |
 
 Tool versions are those observed on the tested machine; minimum supported tool versions are not established.
 
-Environment variables expected by the upstream code (`REINFLOW_DIR`, `REINFLOW_DATA_DIR`, `REINFLOW_LOG_DIR`) are set by a project script instead of being edited by hand (added with the upstream code at 0.2a).
+Environment variables expected by the upstream code (`REINFLOW_DIR`, `REINFLOW_DATA_DIR`, `REINFLOW_LOG_DIR`) are set by `afterslip.upstream.configure_reinflow()` instead of by hand (§2.2). An existing clone without the submodule needs `git submodule update --init`; `make install` stops with that hint.
 
 ## 7. Tested configurations
 

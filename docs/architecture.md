@@ -27,7 +27,7 @@ The system has **12 components in five layers**, plus a run record shared by all
 | | 7. Disturbances | Triggers (when) and operators (what): drop, misgrasp, knock | Planned (M2) |
 | | 8. Intervention-state bank | Generated disturbed states, recoverability labels, train/validation/test splits, hashes, test-access guard | Planned (M2) |
 | D. Learning | 9. Policies | π₀ adapter, fine-tuned policies, toy policies; reset/reconstruction rule | Planned (M0, M1, M2) |
-| | 10. RL trainer | ReinFlow wrapper, nominal/disturbed mix sampler, mitigation hooks | Planned (M1, M2) |
+| | 10. RL trainer | ReinFlow wrapper, nominal/disturbed mix sampler, mitigation hooks | Upstream code pinned and installed (M0 0.2a); wrapper planned (M1, M2) |
 | E. Measurement | 11. Evaluation harness | Nominal, bank-based disturbed and end-to-end suites; per-episode records | Planned (M0, M2, M3) |
 | | 12. Statistics and reporting | Hierarchical bootstrap, verdicts, headline figure, reports | Planned (M2, M3, M5) |
 | (shared) | Run record | Config, commits, artifact hashes, runtime versions, outputs | Planned (M1) |

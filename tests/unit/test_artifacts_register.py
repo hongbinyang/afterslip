@@ -22,10 +22,15 @@ def _normalize(name: str) -> str:
 
 
 def _locked_packages() -> set[tuple[str, str]]:
-    pattern = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_.\-]*)==([^\s;\\]+)", re.MULTILINE)
+    """(name, version) pairs; a package installed from git is pinned by its commit."""
+    by_version = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_.\-]*)==([^\s;\\]+)", re.MULTILINE)
+    by_commit = re.compile(
+        r"^([A-Za-z0-9][A-Za-z0-9_.\-]*) @ git\+\S+@([0-9a-f]{40})$", re.MULTILINE
+    )
     found = set()
     for lock in LOCKS:
-        for name, version in pattern.findall((ROOT / lock).read_text()):
+        text = (ROOT / lock).read_text()
+        for name, version in by_version.findall(text) + by_commit.findall(text):
             found.add((_normalize(name), version))
     return found
 

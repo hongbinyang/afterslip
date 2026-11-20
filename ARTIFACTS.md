@@ -17,7 +17,7 @@ The direct dependencies, with license evidence beyond the package metadata where
 | Artifact | Source | Version / hash | License (as stated by source) | Use and redistribution | Checked |
 |---|---|---|---|---|---|
 | robosuite | [ARISE-Initiative/robosuite](https://github.com/ARISE-Initiative/robosuite), PyPI | 1.4.1; hashes in the pip locks | MIT (`LICENSE` at tag `v1.4.1`; the PyPI metadata states no license) | Benchmark environment `PickPlaceCan`, Panda robot, OSC controller; installed, not redistributed | 2026-11-19 |
-| robomimic | [ARISE-Initiative/robomimic](https://github.com/ARISE-Initiative/robomimic), PyPI | 0.3.0; hashes in the pip locks | MIT (`LICENSE` at tag `v0.3.0`; the PyPI metadata states no license) | Dependency of the upstream reference stack; installed, not redistributed | 2026-11-19 |
+| robomimic | [ARISE-Initiative/robomimic](https://github.com/ARISE-Initiative/robomimic), git | v0.4.0, commit `7c66e7a41b5d9dcc905b1a68346bfee1b49b79c9`, pinned in the pip locks (installed from git by commit; not on PyPI) | MIT (`LICENSE` at tag `v0.4.0`) | Robosuite environment wrapper used by the upstream code; installed, not redistributed | 2026-11-19 |
 | MuJoCo Python bindings | [google-deepmind/mujoco](https://github.com/google-deepmind/mujoco), PyPI | 3.2.3; hashes in the pip locks | Apache-2.0 | Physics engine (FR-ENV-01); installed, not redistributed | 2026-11-19 |
 | egl-probe | [StanfordVL/egl_probe](https://github.com/StanfordVL/egl_probe), PyPI (source only) | 1.0.2; hash in the Linux pip lock | MIT (repository `LICENSE`; no PyPI license metadata) | robomimic dependency, Linux only; built from source at install; not redistributed | 2026-11-19 |
 | PyTorch, torchvision | [pytorch.org](https://pytorch.org/), PyPI | torch 2.4.1, torchvision 0.19.1; hashes in the pip locks | BSD-3 (torch), BSD (torchvision), package metadata. On Linux, torch pulls in 12 NVIDIA CUDA library packages under NVIDIA's proprietary license (§4, gap G2) | Learning; installed, not redistributed | 2026-11-19 |
@@ -30,15 +30,15 @@ The direct dependencies, with license evidence beyond the package metadata where
 | Panda robot, Panda gripper, mount, bins arena, can and other object meshes and textures of the `PickPlaceCan` scene | Bundled in robosuite, `robosuite/models/assets/` | robosuite 1.4.1 | Repository-level MIT `LICENSE` at `v1.4.1`. **File level:** the scene loads 80 asset files (STL, OBJ, MSH, PNG) from `robots/panda/`, `grippers/meshes/panda_gripper/`, `mounts/meshes/rethink_mount/`, `objects/meshes/` and `textures/`; a scan of all 80 files and the 6 MJCF sources for license or copyright text found no license (the only matches: an empty `Copyright` field in `textures/steel-brushed.png`, and the copyright line of the embedded Adobe color profile in `textures/ceramic.png`, which concerns the profile, not the image). The assets tree has no license, notice or readme files. **Panda mesh origin:** 8 of the 13 loaded Panda STL files (`robots/panda/meshes/link0,2–7.stl`, `grippers/meshes/panda_gripper/hand.stl`) are byte-identical (same git blob hash) to the collision meshes in [frankaemika/franka_ros](https://github.com/frankaemika/franka_ros) `franka_description/meshes/collision/`, licensed Apache-2.0 (repository `LICENSE`); `link1.stl`, `finger.stl`, `finger_longer.stl`, the `*_vis.stl` files and the 50 `obj_meshes` files differ from those files and robosuite states no separate origin for them (gap G3) | Core task scene; used through robosuite, not redistributed. Rendered videos show the scene but do not contain the mesh files | **In use** | 2026-11-19 |
 | Franka Research 3 model (`franka_fr3`) | [google-deepmind/mujoco_menagerie](https://github.com/google-deepmind/mujoco_menagerie) | commit `370c43965323c0944b433b202aac5058b5f907a9` | Apache-2.0 (`franka_fr3/LICENSE`, per model; the repository has no single license) | Feasibility spike only (setup.md §7); arm only, no gripper | **Not in use**; FR3 track, F0 | 2026-11-19 |
 
-## 3. Upstream code, checkpoints and datasets (not yet in use)
+## 3. Upstream code, checkpoints and datasets
 
-Each entry is completed, with file hashes, before first use.
+Files downloaded for inspection only are listed with their hash; each entry is completed before first use.
 
-| Artifact | Source | License (as stated by source) | Needed for | Status |
-|---|---|---|---|---|
-| ReinFlow reference code | [ReinFlow/ReinFlow](https://github.com/ReinFlow/ReinFlow) | MIT (repository `LICENSE`) | RL fine-tuning; pinned as a submodule at 0.2a | Commit not pinned yet (0.2a) |
-| State-based Can checkpoint (π₀) | Upstream release linked from the ReinFlow project | To verify per file (the project page states MIT for its released materials; requirements background, ReinFlow entry) | Path 1 (FR-ART-01, §6.1.1) | Not identified yet (0.2b) |
-| Robomimic Can demonstrations (low-dimensional) | robomimic dataset release | To verify | Path 2 (FR-POL-03), normalization statistics | Not downloaded (0.2b) |
+| Artifact | Source | Version / hash | License (as stated by source) | Use and redistribution | Status | Checked |
+|---|---|---|---|---|---|---|
+| ReinFlow reference code | [ReinFlow/ReinFlow](https://github.com/ReinFlow/ReinFlow), git submodule `third_party/ReinFlow` | branch `release`, commit `e722e151bed767f3ffef47527cf697f2358af55d` (2026-04-24; no release tags) | MIT (repository `LICENSE`; file headers MIT, some derived from DPPO, MIT) | Flow-policy pretraining, RL fine-tuning and evaluation code; installed editable without its dependencies (setup.md §2.2); not redistributed (the repository records only the submodule commit) | **In use** (0.2a) | 2026-11-19 |
+| Released Can 1-ReFlow checkpoint | [ReinFlow-data-checkpoints-logs](https://huggingface.co/datasets/ReinFlow/ReinFlow-data-checkpoints-logs), `log/log_robomimic_pretrained/can/ReFlow/state_2000.pt` | 17,098,482 bytes, sha256 `2e519dee3592b5eea2f95da868daac18d429908ae231e6d71132a984d9fbd88c` | MIT (dataset card) | Inspected without loading (pickle opcodes listed, nothing executed): ViT image encoder (`network.backbone.vit.*`), `network.compress`, flow MLP; loaded by upstream's image config (RGB 96×96 + 9 proprioceptive inputs). **Image-based**, so it does not fit decision D-2 | **Not in use** | 2026-11-19 |
+| Robomimic Can demonstrations (low-dimensional) | robomimic dataset release, or the processed version used by the upstream state-based configs | To verify | To verify | Path 2 (FR-POL-03), normalization statistics | Not downloaded (0.2b) | — |
 
 ## 4. System components outside the locks
 
@@ -57,27 +57,30 @@ Not installed by the project's pip locks; recorded with the evidence for their t
 
 | # | Gap | Evidence so far | Recommendation | Needs |
 |---|---|---|---|---|
-| G1 | FFmpeg on macOS is an unpinned system program, and the two platforms use different FFmpeg versions (Linux 4.2.2, macOS 7.1.1) | Licenses verified (§4): GPL-3.0-or-later on both; use as a separate, unmodified program without redistribution is permitted by the GPL. **Tried 2026-11-19 (approved by the lead):** conda-forge `ffmpeg` 9.0.2 (GPL build) in the conda layer. It locks for both platforms (with a macOS 12 minimum), but on macOS it adds conda-forge `libcxx` 23 to the environment, after which the pip-installed `llvmlite` (numba) fails to load (missing C++ symbol); no older `libcxx` is compatible with that FFmpeg. Not adopted | Interim (in place): each video's metadata records the FFmpeg version that encoded it (`encoder`). Next: assess PyAV (`av`, pip-locked with hashes on both platforms; the upstream code already pins `av==12.3.0`) as the single encoder | Spike and then lead decision |
+| G1 | FFmpeg on macOS is an unpinned system program, and the two platforms use different FFmpeg versions (Linux 4.2.2, macOS 7.1.1) | Licenses verified (§4): GPL-3.0-or-later on both; use as a separate, unmodified program without redistribution is permitted by the GPL. **Tried 2026-11-19 (approved by the lead):** conda-forge `ffmpeg` 9.0.2 (GPL build) in the conda layer. It locks for both platforms (with a macOS 12 minimum), but on macOS it adds conda-forge `libcxx` 23 to the environment, after which the pip-installed `llvmlite` (numba) fails to load (missing C++ symbol); no older `libcxx` is compatible with that FFmpeg. Not adopted | Interim (in place): each video's metadata records the FFmpeg version that encoded it (`encoder`). **PyAV assessed 2026-11-19 (macOS):** `av==12.3.0` (upstream's pin; BSD package with a bundled FFmpeg 6.1 stated as GPL version 3 or later) encodes H.264 with `libx264` in the project environment, and imageio decodes the result; but OpenCV (imported by robosuite) bundles its own FFmpeg, and loading both makes the Objective-C runtime report duplicate `libavdevice` classes with a warning of possible crashes, in either import order. Linux not yet assessed. Not recommended until that conflict is shown harmless or avoided | Spike and then lead decision |
 | G2 | NVIDIA CUDA libraries are proprietary | EULA read for one package (§4): install and use are granted; redistribution is restricted | **Decided 2026-11-19 by the project lead:** use accepted under the EULA (no redistribution, no safety-critical use); the CUDA build stays, since GPU training is planned. Linux usage notes in setup.md §6.2. Before any release that bundles the environment (e.g. a Docker image at M5), the distribution terms are checked | Closed for use; re-check before redistribution |
 | G3 | Panda meshes that are not byte-identical to franka_ros (link1, fingers, visual meshes) have no stated origin or terms of their own | 8 of 13 loaded STL files traced to franka_ros (Apache-2.0); the rest are covered only by robosuite's repository-level MIT license | Accept robosuite's MIT license as the stated terms for use; trace the remaining files before any redistribution of scene files | Product review |
 | G4 | System packages (Ubuntu archive, Homebrew) are not pinned | Listed in §4 and setup.md §6.2 | Record their installed versions in each run manifest (FR-TRK-01, M1); pin FFmpeg per G1 | Implementation at M1 |
 
 ## Appendix A. Every locked Python package
 
-All packages pinned in `requirements-linux.lock` and `requirements-macos.lock`, with the license as stated in the package's own PyPI metadata (SPDX expression, license field, or license classifier, in that order of preference), or by its repository where the metadata states none. Source: `https://pypi.org/project/<name>/<version>/`; hashes in the lock files. Checked 2026-11-19. None is redistributed by this project.
+All packages pinned in `requirements-linux.lock` and `requirements-macos.lock` (by version, or by git commit where a package is installed from its repository), with the license as stated in the package's own PyPI metadata (SPDX expression, license field, or license classifier, in that order of preference), or by its repository where the metadata states none. Source: `https://pypi.org/project/<name>/<version>/`; hashes in the lock files. Checked 2026-11-19. None is redistributed by this project.
 
 | Package | Version | Platforms | License (as stated by source) | Note |
 |---|---|---|---|---|
 | absl-py | 2.3.1 | Linux, macOS | Apache-2.0 |  |
 | antlr4-python3-runtime | 4.9.3 | Linux, macOS | BSD |  |
 | attrs | 25.3.0 | Linux, macOS | MIT |  |
+| beautifulsoup4 | 4.15.0 | Linux, macOS | MIT License | gdown dependency |
 | certifi | 2026.10.23 | Linux, macOS | MPL-2.0 |  |
 | cffi | 1.17.1 | Linux, macOS | MIT |  |
 | charset-normalizer | 3.5.2 | Linux, macOS | MIT |  |
+| click | 8.1.8 | Linux, macOS | BSD License (classifier) | wandb dependency |
 | cloudpickle | 3.1.3 | Linux, macOS | BSD-3-Clause |  |
 | contourpy | 1.1.1 | Linux, macOS | BSD License (classifier) |  |
 | cryptography | 47.0.0 | Linux, macOS | Apache-2.0 OR BSD-3-Clause |  |
 | cycler | 0.12.1 | Linux, macOS | BSD License (classifier) |  |
+| docker-pycreds | 0.4.0 | Linux, macOS | Apache License 2.0 | wandb dependency |
 | egl-probe | 1.0.2 | Linux | MIT (repository LICENSE; no PyPI license metadata) |  |
 | einops | 0.8.0 | Linux, macOS | MIT |  |
 | etils | 1.3.0 | Linux, macOS | Apache Software License (classifier) |  |
@@ -86,6 +89,9 @@ All packages pinned in `requirements-linux.lock` and `requirements-macos.lock`, 
 | filelock | 3.16.1 | Linux, macOS | The Unlicense (Unlicense) (classifier) |  |
 | fonttools | 4.57.0 | Linux, macOS | MIT |  |
 | fsspec | 2025.3.0 | Linux, macOS | BSD 3-Clause License |  |
+| gdown | 5.2.0 | Linux, macOS | MIT | upstream ReinFlow import |
+| gitdb | 4.0.12 | Linux, macOS | BSD License | wandb dependency |
+| gitpython | 3.2.1 | Linux, macOS | BSD-3-Clause | wandb dependency |
 | glfw | 2.11.0 | Linux, macOS | MIT |  |
 | google-auth | 2.50.0 | Linux, macOS | Apache 2.0 |  |
 | google-auth-oauthlib | 1.0.0 | Linux, macOS | Apache 2.0 |  |
@@ -93,6 +99,8 @@ All packages pinned in `requirements-linux.lock` and `requirements-macos.lock`, 
 | gym | 0.22.0 | Linux, macOS | MIT |  |
 | gym-notices | 0.1.0 | Linux, macOS | MIT License (classifier) |  |
 | h5py | 3.11.0 | Linux, macOS | BSD-3-Clause |  |
+| hf-xet | 1.8.0 | Linux, macOS | Apache-2.0 | robomimic dependency |
+| huggingface-hub | 0.36.2 | Linux, macOS | Apache | robomimic dependency |
 | hydra-core | 1.3.2 | Linux, macOS | MIT |  |
 | hypothesis | 6.113.0 | Linux, macOS | MPL-2.0 |  |
 | idna | 3.15 | Linux, macOS | BSD-3-Clause |  |
@@ -131,6 +139,7 @@ All packages pinned in `requirements-linux.lock` and `requirements-macos.lock`, 
 | opencv-python | 5.1.0.95 | Linux, macOS | Apache 2.0 |  |
 | packaging | 26.2 | Linux, macOS | Apache-2.0 OR BSD-2-Clause |  |
 | pillow | 10.4.0 | Linux, macOS | HPND |  |
+| platformdirs | 4.3.6 | Linux, macOS | MIT License (classifier) | wandb dependency |
 | pluggy | 1.5.0 | Linux, macOS | MIT |  |
 | protobuf | 5.29.6 | Linux, macOS | 3-Clause BSD License |  |
 | psutil | 7.2.2 | Linux, macOS | BSD-3-Clause |  |
@@ -145,6 +154,7 @@ All packages pinned in `requirements-linux.lock` and `requirements-macos.lock`, 
 | pyobjc-framework-quartz | 10.3.2 | macOS | MIT License |  |
 | pyopengl | 3.1.10 | Linux, macOS | BSD License (classifier) |  |
 | pyparsing | 3.1.4 | Linux, macOS | MIT License (classifier) |  |
+| pysocks | 1.7.1 | Linux, macOS | BSD | gdown dependency |
 | pytest | 8.3.5 | Linux, macOS | MIT |  |
 | pytest-timeout | 2.4.0 | Linux, macOS | MIT |  |
 | python-dateutil | 3.0.0 | Linux, macOS | Dual License |  |
@@ -152,13 +162,17 @@ All packages pinned in `requirements-linux.lock` and `requirements-macos.lock`, 
 | pyyaml | 6.0.3 | Linux, macOS | MIT |  |
 | requests | 2.32.4 | Linux, macOS | Apache-2.0 |  |
 | requests-oauthlib | 2.0.0 | Linux, macOS | ISC |  |
-| robomimic | 0.3.0 | Linux, macOS | MIT (repository LICENSE at v0.3.0; no PyPI license metadata) |  |
+| robomimic | 7c66e7a41b5d9dcc905b1a68346bfee1b49b79c9 | Linux, macOS | MIT (repository LICENSE at tag v0.4.0; installed from git by commit, not PyPI) | tag v0.4.0 |
 | robosuite | 1.4.1 | Linux, macOS | MIT (repository LICENSE at v1.4.1; no PyPI license metadata) |  |
 | ruff | 0.17.5 | Linux, macOS | MIT |  |
 | scipy | 1.10.1 | Linux, macOS | BSD License (classifier) |  |
+| sentry-sdk | 2.75.0 | Linux, macOS | MIT | wandb dependency; wandb error reporting is switched off (`afterslip.upstream`) |
+| setproctitle | 1.3.8 | Linux, macOS | BSD-3-Clause | wandb dependency |
 | setuptools | 75.3.4 | Linux, macOS | MIT License (classifier) |  |
 | six | 1.17.0 | Linux, macOS | MIT |  |
+| smmap | 5.0.3 | Linux, macOS | BSD-3-Clause | wandb dependency |
 | sortedcontainers | 2.4.0 | Linux, macOS | Apache 2.0 |  |
+| soupsieve | 2.7 | Linux, macOS | MIT | gdown dependency |
 | sympy | 1.13.3 | Linux, macOS | BSD |  |
 | tensorboard | 2.14.0 | Linux, macOS | Apache 2.0 |  |
 | tensorboard-data-server | 0.7.2 | Linux, macOS | Apache 2.0 |  |
@@ -167,11 +181,12 @@ All packages pinned in `requirements-linux.lock` and `requirements-macos.lock`, 
 | tomli | 2.5.0 | Linux, macOS | MIT |  |
 | torch | 2.4.1 | Linux, macOS | BSD-3 |  |
 | torchvision | 0.19.1 | Linux, macOS | BSD |  |
-| tqdm | 4.70.1 | Linux, macOS | MPL-2.0 AND MIT |  |
+| tqdm | 4.66.5 | Linux, macOS | MPL-2.0 AND MIT | upstream ReinFlow pin |
 | triton | 3.0.0 | Linux | MIT License (classifier) |  |
 | typing-extensions | 4.13.2 | Linux, macOS | PSF-2.0 |  |
 | tzdata | 2026.6 | Linux, macOS | Apache-2.0 |  |
 | urllib3 | 2.2.3 | Linux, macOS | MIT License (classifier) |  |
+| wandb | 0.17.7 | Linux, macOS | MIT License (license field) | upstream ReinFlow import; logging switched off by default |
 | werkzeug | 3.0.6 | Linux, macOS | BSD License (classifier) |  |
 | wheel | 0.45.1 | Linux, macOS | MIT License (classifier) |  |
 | zipp | 3.20.2 | Linux, macOS | MIT License (classifier) |  |
