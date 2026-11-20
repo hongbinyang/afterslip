@@ -204,6 +204,24 @@ On headless Linux, set the renderer before running tests: `export MUJOCO_GL=osme
 
 Tool versions are those observed on the tested machine; minimum supported tool versions are not established.
 
+### 6.6 Measured compute (milestone 0.7)
+
+Measured 2026-11-20 on an Apple M2 Pro (12 cores, 16 GB), macOS 26.6, torch 2.4.1, with the full regenerated Can data (180 demos, 20,343 training chunks, 79 batches of 256 per epoch). Scripts: `scripts/compute/`.
+
+| Workload | Device | Measured | Full-run estimate |
+|---|---|---|---|
+| State-based 1-ReFlow pretraining (`configs/pretrain/can_reflow_mlp_state.yaml`) | CPU (8 torch threads) | 7.0 s per epoch (20 epochs in 144 s) | 2000 epochs ≈ 3.9 h |
+| same | Apple MPS | 1.7 s per epoch after the first epoch (20 epochs in 37 s) | 2000 epochs ≈ 1 h |
+| Can environment, random actions, no rendering | CPU, one environment | 165 control steps/s, including resets | about 1.7 h per million environment steps per process |
+
+**Limits of these numbers:** the benchmark disables the held-out scoring and intermediate checkpoints (`val_dataset_path=null`, no checkpoint until the end), so the full-run estimates exclude that overhead: with the config's defaults, four checkpoint saves and one held-out scoring of the final checkpoint are added. A 20-epoch pilot says nothing about the final model's quality, and the exact duration of a 2000-epoch run is only known once one has finished (thermal throttling and other load on the machine can change it).
+
+**Not measured:** CUDA GPUs; RL fine-tuning (policy updates plus many environments in parallel); rendering cost during training (none is planned for state-based training). The per-million-steps figure is for one process; how it scales with parallel environments on more cores is an assumption until measured in M1. Loss after 20 epochs was similar on both devices (about 0.39 on CPU, 0.42 on MPS); results are not bitwise identical across devices.
+
+**Recommendation for the full pretraining (0.3d):** Apple MPS on this machine, about 1 hour, with no cloud GPU needed; CPU is a fallback at about 4 hours. Command: `make pretrain-can DEVICE=mps`.
+
+**Main guard:** any script that starts pretraining must run its work under `if __name__ == "__main__":`. On macOS the data-loader workers start new Python processes that re-import the script; without the guard, each worker starts another run and the job hangs (observed while measuring).
+
 Environment variables expected by the upstream code (`REINFLOW_DIR`, `REINFLOW_DATA_DIR`, `REINFLOW_LOG_DIR`) are set by `afterslip.upstream.configure_reinflow()` instead of by hand (§2.2). An existing clone without the submodule needs `git submodule update --init`; `make install` stops with that hint.
 
 ## 7. Tested configurations
