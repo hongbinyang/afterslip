@@ -198,6 +198,26 @@ Each run directory `outputs/<YYYYMMDD-HHMMSS>-<name>/` contains the resolved con
    **Finding (2026-11-19):** upstream has no state-based 1-ReFlow configuration for Can, and the released Can checkpoint is image-based (ARTIFACTS.md §3). Under D-2, Path 1 is therefore unavailable from this source. **Decided 2026-11-19 by the project lead: keep D-2 and follow Path 2**, pretraining a state-based 1-ReFlow π₀ with the upstream pretraining code on licensed low-dimensional Can demonstrations (FR-POL-03), subject to verifying those demonstrations (0.2b).
    **Demonstrations (decided 2026-11-19 by the project lead, product manager and architect, conditionally):** the robomimic v1.5 proficient-human Can file (MIT; recorded with robosuite 1.5.1) is used in robosuite 1.4.1. Only its recorded states and actions are used: robosuite 1.5.1 orders and defines the 14-D `object` observation differently, so every observation is regenerated from the states in our environment (`afterslip/data/can_demos.py`, `make data-can`); normalization statistics come from robomimic's `train` mask only, and its `valid` demos are held out. Conditions, each a committed check: the file's hash; regenerated robot observations equal the recorded ones (≤ 1e-6); the observation order equals the live environment (within the one-substep kinematic lag of a step's observation, about 1e-5); actions aligned with observations; and the open-loop replay comparison (`scripts/demo_replay/`: 193/200 in robosuite 1.4.1, 187–189/200 in robosuite 1.5.1, with similar end-effector drift). These do not establish equal fidelity; the decisive check is the pretrained policy's success under FR-POL-03. If that fails, migrating to robosuite 1.5.1 is the fallback.
 3. **Config mapping (0.2b):** a table from the released config to our task settings (observation keys, normalization file, action dimension, `horizon_steps`, `act_steps`, `cond_steps`, denoising steps, control frequency, horizon). A test asserts each value.
+   **State-based config (0.2b, Path 2):** `configs/pretrain/can_reflow_mlp_state.yaml`, run with `make pretrain-can` (`afterslip.upstream.pretrain`). Each value is asserted by `tests/integration/test_pretrain_config.py`:
+
+   | Parameter | Value | Source |
+   |---|---|---|
+   | Observation | 23-D: `robot0_eef_pos`, `robot0_eef_quat`, `robot0_gripper_qpos`, `object` (regenerated, robosuite 1.4.1) | upstream state-based Can configs (`obs_dim` 23); `afterslip/data/can_demos.py` |
+   | Normalization | min–max to [-1, 1], train demos only (`normalization.npz`) | upstream converter's mapping; split from robomimic masks |
+   | Action | 7-D OSC_POSE delta + gripper, normalized to [-1, 1] | task; `can.json` controller |
+   | `horizon_steps` / `act_steps` | 4 / 4 | upstream Can image ReFlow and state diffusion configs; fine-tuning config |
+   | `cond_steps` | 1 (no observation history) | upstream Can configs |
+   | Model | ReFlow with `FlowMLP`, ReLU, residual, no layer norm | upstream state ReFlow config (Robomimic Transport) |
+   | Width / time embedding | `mlp_dims` [512, 512, 512], `time_dim` 32 | upstream Can image ReFlow config (Transport uses 1024 for a larger task) |
+   | Denoising steps (max) | 100 | upstream Can ReFlow configs |
+   | Optimizer | lr 1e-4, weight decay 1e-6, cosine schedule (2000 steps, warm-up 100, min 1e-5), EMA 0.995, 2000 epochs, batch 256 | upstream Can image ReFlow config |
+   | Environment | PickPlaceCan, Panda, OSC_POSE, 20 Hz, horizon 300 | `can.json`, fine-tuning config, `CanTaskConfig` |
+   | Logging | local only (`wandb: null`); no evaluation during pretraining (`test_in_mujoco: false`) | FR-TRK-02; evaluation follows the FR-POL-03 protocol |
+   | Held-out validation | robomimic's 20 `valid` demos (`val.npz`), scored after training by `afterslip.upstream.pretrain`: mean flow loss of the final checkpoint (model and EMA weights; 5 passes, fixed seed), written to `<logdir>/heldout_validation.json` | upstream's validation is not used: it only splits the training file at random (`train.train_split`), and its code path fails at the pinned commit (`with torch.no_grad:` without a call) |
+
+   Measured on CPU (macOS arm64): about 0.5 s per batch of 64, so a full 2000-epoch run is a GPU job (estimate at 0.7).
+
+   **Use of the held-out loss before policy evaluation:** it is a diagnostic reported with each pretrained checkpoint, next to the training loss; a held-out loss far above the training loss indicates overfitting to the 180 training demos and is raised before the policy is evaluated. It does not select the policy: the checkpoint to evaluate (the final one, unless the FR-POL-03 protocol fixed in 0.3a says otherwise) and the success threshold are fixed before any evaluation run, so evaluation results never feed back into the choice.
 4. **Licenses (0.1):** robosuite, robomimic and their datasets, ReinFlow code and checkpoints, Menagerie FR3 (Apache-2.0 file observed), each verified individually.
 
 ## 11. First demonstrable increments (M0)

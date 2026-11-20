@@ -62,7 +62,7 @@ REINFLOW := third_party/ReinFlow
 UV_COMPILE := uv pip compile requirements.in --override requirements-overrides.txt \
               --python-version $(PYTHON_VERSION) --generate-hashes --quiet
 
-.PHONY: help platform check-platform check-tools check-submodules lock env sync install setup data-can test smoke format lint typecheck remove-env
+.PHONY: help platform check-platform check-tools check-submodules lock env sync install setup data-can pretrain-can test smoke format lint typecheck remove-env
 
 help:  ## List the available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -178,6 +178,10 @@ remove-env:  ## Delete the conda env (name: ENV); refuses base and the active en
 
 data-can:  ## Download the Can demonstrations (hash-checked) and regenerate them for robosuite 1.4.1
 	"$(ENV_PYTHON)" -m afterslip.data.can_demos
+
+DEVICE ?= cuda:0
+pretrain-can:  ## Pretrain the state-based Can flow policy (DEVICE=cuda:0|cpu|mps; needs make data-can)
+	"$(ENV_PYTHON)" -m afterslip.upstream.pretrain configs/pretrain/can_reflow_mlp_state.yaml device=$(DEVICE)
 
 # ---------------------------------------------------------------------------
 # Tests

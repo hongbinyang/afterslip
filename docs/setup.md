@@ -47,6 +47,8 @@ The upstream code is pinned as a git submodule and installed by `make install` w
 | gdown, tqdm, matplotlib, hydra-core, omegaconf, einops, gym, imageio | pinned | same pins | Imported by the upstream code |
 | av, pandas, seaborn, pypdf, pretty_errors | pinned | not installed | Not imported by the flow-policy and Robomimic code paths (plotting and utility scripts only). `av` is assessed separately as the video encoder (ARTIFACTS.md §5, G1) |
 
+Pretraining runs through `afterslip.upstream.pretrain` (`make pretrain-can`), not upstream's `script/run.py`, which imports d4rl. It loads the config, applies `key=value` overrides and runs the agent named by `_target_`. One deviation: upstream's pretraining loop moves batches with a helper whose device defaults to `cuda:0`, which fails on CPU and MPS; the launcher binds it to the configured `device` without modifying the upstream code.
+
 The upstream code reads `REINFLOW_DIR`, `REINFLOW_DATA_DIR` and `REINFLOW_LOG_DIR` at import time; `afterslip.upstream.configure_reinflow()` sets them (data and logs under the git-ignored `outputs/reinflow/`) and must run before any upstream import. The upstream packages have generic top-level names (`agent`, `model`, `env`, `util`); project code imports them only after that call.
 
 

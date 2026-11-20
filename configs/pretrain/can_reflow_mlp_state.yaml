@@ -1,0 +1,77 @@
+# State-based 1-ReFlow pretraining on Robomimic Can (milestone 0.2b, Path 2; FR-POL-03).
+#
+# Derived from two upstream configs at third_party/ReinFlow (commit e722e15), see the
+# mapping table in docs/design.md §10:
+#   cfg/robomimic/pretrain/transport/pre_reflow_mlp.yaml  state-based ReFlow (structure)
+#   cfg/robomimic/pretrain/can/pre_reflow_mlp_img.yaml    Can ReFlow (Can hyperparameters)
+# Run: python -m afterslip.upstream.pretrain configs/pretrain/can_reflow_mlp_state.yaml
+#      [key=value ...]   (e.g. device=cpu train.n_epochs=1)
+
+env_suite: robomimic
+env: can
+obs_dim: 23                 # robot0_eef_pos 3, robot0_eef_quat 4, robot0_gripper_qpos 2, object 14
+action_dim: 7               # OSC_POSE delta (6) + gripper (1)
+horizon_steps: 4            # action chunk predicted per inference
+cond_steps: 1               # observation history length (no history)
+
+_target_: agent.pretrain.train_reflow_agent.TrainReFlowAgent
+name: ${env}_pre_reflow_mlp_state_ta${horizon_steps}_td${denoising_steps}
+logdir: ${oc.env:REINFLOW_LOG_DIR}/robomimic/pretrain/${name}/${now:%Y-%m-%d}_${now:%H-%M-%S}_${seed}
+train_dataset_path: ${oc.env:REINFLOW_DATA_DIR}/robomimic/can-state/train.npz
+normalization_path: ${oc.env:REINFLOW_DATA_DIR}/robomimic/can-state/normalization.npz
+# Held-out demos (robomimic `valid` mask): scored after training, never trained on.
+val_dataset_path: ${oc.env:REINFLOW_DATA_DIR}/robomimic/can-state/val.npz
+denoising_steps: 100        # maximum steps of the flow ODE; fine-tuning uses fewer
+batch_size: 256
+seed: 42
+device: cuda:0
+test_in_mujoco: false       # evaluation follows the FR-POL-03 protocol, separately
+wandb: null                 # local logs only (FR-TRK-02)
+
+train:
+  n_epochs: 2000
+  batch_size: ${batch_size}
+  learning_rate: 1e-4
+  weight_decay: 1e-6
+  lr_scheduler:
+    first_cycle_steps: 2000
+    warmup_steps: 100
+    min_lr: 1e-5
+  epoch_start_ema: 20
+  update_ema_freq: 10
+  save_model_freq: 500
+  log_freq: 100
+
+model:
+  _target_: model.flow.reflow.ReFlow
+  network:
+    _target_: model.flow.mlp_flow.FlowMLP
+    horizon_steps: ${horizon_steps}
+    action_dim: ${action_dim}
+    cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
+    time_dim: 32
+    mlp_dims: [512, 512, 512]
+    activation_type: ReLU
+    out_activation_type: Identity
+    use_layernorm: false
+    residual_style: true
+  device: ${device}
+  horizon_steps: ${horizon_steps}
+  action_dim: ${action_dim}
+  act_min: -1
+  act_max: 1
+  obs_dim: ${obs_dim}
+  max_denoising_steps: ${denoising_steps}
+  seed: ${seed}
+  sample_t_type: uniform
+
+ema:
+  decay: 0.995
+
+train_dataset:
+  _target_: agent.dataset.sequence.StitchedSequenceDataset
+  dataset_path: ${train_dataset_path}
+  horizon_steps: ${horizon_steps}
+  cond_steps: ${cond_steps}
+  device: ${device}
+  max_n_episodes: -1        # all 180 training demos
