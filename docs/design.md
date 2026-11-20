@@ -150,7 +150,7 @@ class ObserverRecorder:
 | Encoding | imageio + imageio-ffmpeg, H.264 MP4 |
 | Orientation | Frames from robosuite 1.4.1 `MjSim.render` were vertically flipped on macOS; the adapter returns upright frames, so the recorder never flips **[verify per platform]** |
 | Side effects | Rendering must not change simulator state or any RNG; a test compares trajectories with and without recording |
-| Metadata sidecar | episode or bank-state ID, seed, policy checkpoint hash, suite, camera name and pose, fps, resolution, backend, frame count, episode length, git commit |
+| Metadata sidecar | episode or bank-state ID, seed, policy checkpoint hash, suite, camera name and pose, fps, resolution, backend, frame count, episode length, git commit, encoder (FFmpeg version actually used) |
 | Location | `outputs/<run>/videos/<episode_id>.mp4` and `.json` |
 | Cost | Rendering lowers throughput, so training does not record; evaluation records only the configured subset |
 

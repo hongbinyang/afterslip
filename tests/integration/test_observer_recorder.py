@@ -40,5 +40,7 @@ def test_recorder_writes_readable_video_and_metadata(tmp_path):
     meta = json.loads(record.metadata_path.read_text())
     assert set(REQUIRED_METADATA_KEYS) <= set(meta)
     assert meta["camera"] == "agentview" and meta["fps"] == 20
+    # The FFmpeg build differs by platform (ARTIFACTS.md §4); the sidecar names the one used.
+    assert meta["encoder"].startswith("ffmpeg version ")
     assert meta["frame_count"] == meta["episode_steps"] == STEPS
     assert len(meta["camera_pose"]["pos"]) == 3 and len(meta["camera_pose"]["xmat"]) == 9

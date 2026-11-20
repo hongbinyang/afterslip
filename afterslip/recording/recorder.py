@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import imageio
+import imageio_ffmpeg
 import numpy.typing as npt
 
 from afterslip.tasks.interface import TaskInterface
@@ -44,6 +45,7 @@ REQUIRED_METADATA_KEYS = (
     "frame_count",
     "episode_steps",
     "git_commit",
+    "encoder",
 )
 
 
@@ -115,6 +117,8 @@ class ObserverRecorder:
             "frame_count": len(self._frames),
             "episode_steps": len(self._frames),  # one frame per control step
             "git_commit": self._git_commit(),
+            # The FFmpeg build differs by platform (ARTIFACTS.md §4), so record which one ran.
+            "encoder": _ffmpeg_version(imageio_ffmpeg.get_ffmpeg_exe()),
         }
         metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
         return VideoRecord(
@@ -131,3 +135,9 @@ class ObserverRecorder:
         except (OSError, subprocess.CalledProcessError):
             return None
         return result.stdout.strip()
+
+
+def _ffmpeg_version(exe: str) -> str:
+    """Version from `ffmpeg -version`: its first three words, e.g. "ffmpeg version 4.2.2-static"."""
+    result = subprocess.run([exe, "-version"], capture_output=True, text=True, check=True)
+    return " ".join(result.stdout.splitlines()[0].split()[:3])

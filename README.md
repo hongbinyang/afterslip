@@ -53,7 +53,7 @@ The research question is to be answered first on a standard benchmark: a Franka 
 **M0 in progress.** The first milestone is **M0 Verify**: confirm the pretrained checkpoints and datasets, their licenses, and a CPU smoke test. See requirements §10, [docs/milestones.md](docs/milestones.md), and the running results in [reports/M0.md](reports/M0.md). What exists so far:
 
 - a locked environment (`make setup`) validated on macOS Apple Silicon and on Linux x86-64 CPU (in a clean container)
-- CI on GitHub Actions (Linux CPU): lint, type check and the full test suite on every push; the first run is pending
+- CI on GitHub Actions (Linux CPU): lint, type check and the full test suite on every push
 - the Can task adapter (robosuite `PickPlaceCan`, Panda), the fixed-camera observer recorder, and in-memory environment snapshots with exact restore and replay, each covered by integration tests
 - one expected failure remains by design: restoring the simulator state alone does not reproduce an episode, which is why the full snapshot exists
 - no pretrained policy has been loaded or verified yet
@@ -67,6 +67,7 @@ Python · MuJoCo · robosuite / Robomimic tasks · ReinFlow (flow-policy RL fine
 ```
 README.md            you are here
 LICENSE              MIT
+ARTIFACTS.md         register of external code, models, checkpoints and data, with licenses
 Makefile             setup, lock and test commands (make help)
 pyproject.toml       package metadata and tool settings
 environment.yml      conda layer input (Python, pip)
@@ -92,4 +93,4 @@ outputs/             generated local results (git-ignored)
 
 ## License
 
-[MIT](LICENSE). Third-party models, checkpoints and datasets keep their own licenses; record each one in `ARTIFACTS.md` before use (requirements FR-ART-02).
+[MIT](LICENSE). Third-party models, checkpoints and datasets keep their own licenses; each is recorded in [ARTIFACTS.md](ARTIFACTS.md) before use (requirements FR-ART-02).
