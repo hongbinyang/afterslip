@@ -69,7 +69,7 @@ All entries are candidates until recorded and verified in `ARTIFACTS.md`. An art
 |---|---|---|
 | Pretrained flow-matching policy π₀ for Robomimic Can (1-ReFlow) | ReinFlow checkpoints on Hugging Face: `huggingface.co/datasets/ReinFlow/ReinFlow-data-checkpoints-logs` (dataset card: MIT). The released Can 1-ReFlow checkpoint `log/log_robomimic_pretrained/can/ReFlow/state_2000.pt` is **image-based** (verified 2026-11-19: ViT image encoder weights; loaded by the image config), so it does not fit D-2 | Recorded in `ARTIFACTS.md` §3; not in use |
 | Normalization statistics for Can | Same source (`normalization.npz`) | To verify |
-| Robomimic Can demonstrations | Downloaded by the upstream pretraining scripts (simplified versions of the robomimic datasets); exact host to confirm | To verify (robomimic and its datasets) |
+| Robomimic Can demonstrations | robomimic v1.5 proficient-human low-dimensional file on Hugging Face; `make data-can` downloads it, checks its sha256 and regenerates the observations for robosuite 1.4.1 (design.md §10) | MIT (dataset card); recorded in `ARTIFACTS.md` §3 |
 | Robot model (Franka Panda) and Can scene | Bundled with robosuite | robosuite license; to record |
 | Franka Research 3 arm model (`franka_fr3`), FR3 track | github.com/google-deepmind/mujoco_menagerie, directory `franka_fr3`; candidate pin: commit `370c43965323c0944b433b202aac5058b5f907a9` (2026-11-10) | Model directory contains an Apache-2.0 `LICENSE` file (read 2026-11-16); to record in `ARTIFACTS.md` |
 | Franka Hand (gripper) for the FR3 track | Menagerie `franka_emika_panda` includes a hand model; attaching it to the FR3 flange is a candidate approach | To verify; the tested Menagerie `franka_fr3` model at commit `370c439` has **no gripper** (§7); other FR3 models are not assessed |
@@ -181,6 +181,7 @@ On headless Linux, set the renderer before running tests: `export MUJOCO_GL=osme
 | Changed `environment.yml`, `requirements.in` or `requirements-overrides.txt` | `make lock`, review the diff, `make sync`, `make test`, then commit the inputs and **all** regenerated locks together |
 | Environment broken or modified by hand | `conda deactivate`, `make remove-env`, `make setup` |
 | Check what platform and lock apply | `make platform` |
+| Prepare the Can demonstrations for pretraining (0.2b) | `make data-can` (downloads 47 MB once to `outputs/`, checks its sha256, regenerates the observations) |
 
 ### 6.4 Safety behaviour
 
@@ -197,6 +198,7 @@ On headless Linux, set the renderer before running tests: `export MUJOCO_GL=osme
 | 2026-11-19 | Linux x86-64: Ubuntu 22.04 container (`--platform linux/amd64`, emulated on Apple Silicon), CPU only | Miniforge (conda 26.9.4), uv 0.12.5, conda-lock 4.1.0 | Same steps as CI from a clean container: system libraries above, fresh `make setup` succeeds (egl-probe 1.0.2 builds from source), `make lint` and `make typecheck` pass, `make test` with `MUJOCO_GL=osmesa`: 22 passed, 1 xfailed. |
 | 2026-11-19 | Linux x86-64: GitHub Actions `ubuntu-22.04` runner, CPU | Miniforge (latest), uv 0.12.5, conda-lock 4.1.0 | `.github/workflows/ci.yml` on commit `bc56825` | [Run 44641939078](https://github.com/hongbinyang/afterslip/actions/runs/44641939078): install from the locks, `make lint`, `make typecheck`, `make test` all pass |
 | 2026-11-19 | macOS 26.6 Apple Silicon; Linux x86-64 (Ubuntu 22.04 container, emulated) | as above | 0.2a: fresh `make setup` with the ReinFlow submodule and robomimic v0.4.0 from git; `make lint`, `make typecheck`, `make test` (including T0.4, upstream Can environment) | **Pass** on both: 30 passed, 1 xfailed. The `make sync` guard was corrected to accept version changes (a removal plus an install of the same name) and still stops on a stray package (`tabulate`) |
+| 2026-11-19 | macOS 26.6 Apple Silicon; Linux x86-64 (Ubuntu 22.04 container, emulated) | as above | 0.2b-1: `make data-can` (download, hash check, observation regeneration: 180 train / 20 validation demos) and `make test` | **Pass** on both: 40 passed, 1 xfailed. On headless Linux, `MUJOCO_GL=osmesa` must be set for `make data-can` as well as for the tests |
 
 Tool versions are those observed on the tested machine; minimum supported tool versions are not established.
 

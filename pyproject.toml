@@ -28,6 +28,8 @@ markers = [
 ]
 # A test marked xfail that unexpectedly passes is reported as a failure.
 xfail_strict = true
+# pytest-timeout: a hanging test fails after 5 minutes instead of blocking the run.
+timeout = 300
 
 [tool.ruff]
 line-length = 100

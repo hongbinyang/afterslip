@@ -64,5 +64,15 @@ jobs:
       - name: Type check
         run: make typecheck
 
+      # The Can demonstrations (47 MB, sha256-pinned in afterslip/data/can_demos.py) are
+      # cached by that hash; `make data-can` re-verifies the file and regenerates them.
+      - uses: actions/cache@v4
+        with:
+          path: outputs/data/raw
+          key: can-demos-3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962
+
+      - name: Demonstration data
+        run: make data-can
+
       - name: Tests
         run: make test
