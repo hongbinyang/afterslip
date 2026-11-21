@@ -87,6 +87,7 @@ docs/
   milestones.md      work items, decision points and checks per milestone
   test-plan.md       how each check is verified
   setup.md           environment, stack, versions, package management
+  run-cards.md       how to run long jobs (pretraining) by hand
 reports/             milestone reports (M0.md: running results)
 tests/               unit, integration and smoke tests
 third_party/ReinFlow pinned upstream reference code (git submodule; clone with --recurse-submodules)

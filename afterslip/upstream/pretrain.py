@@ -15,9 +15,11 @@ in training or normalization) and writes it to `<logdir>/heldout_validation.json
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from omegaconf import DictConfig, OmegaConf
@@ -30,9 +32,11 @@ REPO_CONFIGS = REPO_ROOT / "configs"
 def load_config(path: str | Path, overrides: list[str] | None = None) -> DictConfig:
     """The config with overrides applied; interpolations resolve when values are read."""
     configure_reinflow()
-    import hydra.core.utils  # noqa: F401  (registers Hydra's `now` resolver)
-
-    # Resolvers that upstream's launcher registers.
+    # Resolvers the upstream configs use. `now` is normally registered by Hydra's own
+    # launcher; cached, so every read of one config gives the same timestamp.
+    OmegaConf.register_new_resolver(
+        "now", lambda pattern: datetime.now().strftime(pattern), use_cache=True, replace=True
+    )
     OmegaConf.register_new_resolver("eval", eval, replace=True)
     OmegaConf.register_new_resolver("round_up", math.ceil, replace=True)
     OmegaConf.register_new_resolver("round_down", math.floor, replace=True)
@@ -40,6 +44,8 @@ def load_config(path: str | Path, overrides: list[str] | None = None) -> DictCon
     if overrides:
         cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(overrides))
     assert isinstance(cfg, DictConfig)
+    # Fix the run directory once: training and the held-out scoring must use the same one.
+    cfg.logdir = str(cfg.logdir)
     return cfg
 
 
@@ -101,7 +107,9 @@ def run(cfg: DictConfig) -> dict | None:
     if cfg.get("val_dataset_path") is None:
         return None
     last = Path(cfg.logdir) / "checkpoint" / "last.pt"
-    report = {weights: heldout_loss(cfg, last, weights) for weights in ("model", "ema")}
+    report: dict = {weights: heldout_loss(cfg, last, weights) for weights in ("model", "ema")}
+    report["logdir"] = cfg.logdir
+    report["checkpoint_sha256"] = hashlib.sha256(last.read_bytes()).hexdigest()
     (Path(cfg.logdir) / "heldout_validation.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
 

@@ -218,7 +218,7 @@ Measured 2026-11-20 on an Apple M2 Pro (12 cores, 16 GB), macOS 26.6, torch 2.4.
 
 **Not measured:** CUDA GPUs; RL fine-tuning (policy updates plus many environments in parallel); rendering cost during training (none is planned for state-based training). The per-million-steps figure is for one process; how it scales with parallel environments on more cores is an assumption until measured in M1. Loss after 20 epochs was similar on both devices (about 0.39 on CPU, 0.42 on MPS); results are not bitwise identical across devices.
 
-**Recommendation for the full pretraining (0.3d):** Apple MPS on this machine, about 1 hour, with no cloud GPU needed; CPU is a fallback at about 4 hours. Command: `make pretrain-can DEVICE=mps`.
+**Recommendation for the full pretraining (0.3d):** Apple MPS on this machine, about 1 hour, with no cloud GPU needed; CPU is a fallback at about 4 hours. Command: `make pretrain-can DEVICE=mps`; step-by-step run card: [run-cards.md](run-cards.md).
 
 **Main guard:** any script that starts pretraining must run its work under `if __name__ == "__main__":`. On macOS the data-loader workers start new Python processes that re-import the script; without the guard, each worker starts another run and the job hangs (observed while measuring).
 

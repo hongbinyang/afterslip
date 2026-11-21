@@ -83,6 +83,17 @@ def test_paths_point_to_the_regenerated_data(cfg):
     assert cfg.wandb is None and cfg.test_in_mujoco is False
 
 
+def test_default_run_directory_resolves_once(cfg):
+    # The default logdir contains a ${now:...} timestamp; it must resolve without the
+    # upstream launcher and stay fixed, so training and held-out scoring share one folder.
+    import os
+
+    assert "${" not in cfg.logdir
+    assert cfg.logdir.startswith(os.environ["REINFLOW_LOG_DIR"])
+    assert cfg.logdir.endswith(f"_{cfg.seed}")
+    assert load_config(CONFIG).logdir == cfg.logdir  # one timestamp per process
+
+
 def test_normalization_file_matches_the_config(cfg):
     path = can_demos.DEFAULT_OUT_DIR / "normalization.npz"
     if not path.is_file():
@@ -111,6 +122,12 @@ def test_upstream_pretraining_runs_on_the_config(tmp_path):
     val = np.load(can_demos.DEFAULT_OUT_DIR / "val.npz")
     horizon = load_config(CONFIG).horizon_steps
     expected = int(sum(n - horizon + 1 for n in val["traj_lengths"]))
+    # The report names the run folder and the exact checkpoint that was scored.
+    import hashlib
+
+    assert report["logdir"] == str(tmp_path)
+    last = tmp_path / "checkpoint" / "last.pt"
+    assert report["checkpoint_sha256"] == hashlib.sha256(last.read_bytes()).hexdigest()
     for weights in ("model", "ema"):
         assert report[weights]["dataset"].endswith("val.npz")
         assert report[weights]["samples"] == expected
