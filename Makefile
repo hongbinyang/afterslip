@@ -62,7 +62,7 @@ REINFLOW := third_party/ReinFlow
 UV_COMPILE := uv pip compile requirements.in --override requirements-overrides.txt \
               --python-version $(PYTHON_VERSION) --generate-hashes --quiet
 
-.PHONY: help platform check-platform check-tools check-submodules lock env sync install setup data-can pretrain-can test smoke format lint typecheck remove-env
+.PHONY: help platform check-platform check-tools check-submodules lock env sync install setup data-can pretrain-can eval-can test smoke format lint typecheck remove-env
 
 help:  ## List the available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -182,6 +182,13 @@ data-can:  ## Download the Can demonstrations (hash-checked) and regenerate them
 DEVICE ?= cuda:0
 pretrain-can:  ## Pretrain the state-based Can flow policy (DEVICE=cuda:0|cpu|mps; needs make data-can)
 	"$(ENV_PYTHON)" -m afterslip.upstream.pretrain configs/pretrain/can_reflow_mlp_state.yaml device=$(DEVICE)
+
+RUN ?=
+EPISODES ?=
+NORM_SHA ?=
+eval-can:  ## Evaluate a pretrained Can policy by the M0 protocol (RUN=<pretraining run folder>; EPISODES=n for a trial)
+	@test -n "$(RUN)" || { echo "Set RUN to the pretraining run folder, see docs/run-cards.md"; exit 1; }
+	"$(ENV_PYTHON)" -m afterslip.evaluation.nominal --run "$(RUN)" $(if $(EPISODES),--episodes $(EPISODES)) $(if $(NORM_SHA),--normalization-sha256 $(NORM_SHA))
 
 # ---------------------------------------------------------------------------
 # Tests

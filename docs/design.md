@@ -176,9 +176,13 @@ One JSON line per episode under `outputs/<run>/episodes.jsonl`:
 
 Fields for disturbances and re-grasps are added in M2 without renaming these.
 
+Implemented for the nominal evaluation (`afterslip/evaluation/nominal.py`, 0.3b), with two additions from the M0 protocol: `policy_seed` (reset seed + 1000000, applied to a PyTorch generator only) and `error` (an episode that raised is recorded, never replaced). `episode_id` is `<suite>-<seed>`; `suite` is `m0-validation` or `trial`.
+
 ## 8. Run manifest and outputs (FR-TRK-01, -02)
 
 Each run directory `outputs/<YYYYMMDD-HHMMSS>-<name>/` contains the resolved config, `manifest.json` (git commit and dirty flag, submodule commit, platform, CPU/GPU, backend, Python and key package versions via `importlib.metadata`, start and end time), logs, episode records and videos. The manifest is written with standard library tools only.
+
+**Implemented (0.3b, `afterslip/runs.py`):** pretraining and evaluation runs write `manifest.json` at the start (commit, branch, modified flag, submodule commit, command, resolved config, device, versions, platform), `console.log` (stdout and stderr as they happen) and `summary.json` at the end (`status`: complete, interrupted or failed, with error, duration, result, and the progress reached by a run that stopped early). Results are therefore read from the run folder, never copied from a terminal. Run folders: pretraining under `outputs/reinflow/log/…` (upstream's layout), evaluation under `outputs/eval/can-nominal/<YYYY-MM-DD_HH-MM-SS>/`.
 
 ## 9. Testing architecture
 

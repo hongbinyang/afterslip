@@ -10,6 +10,9 @@ training file (`train.train_split`), and that code path is broken at the pinned 
 loss of the final checkpoint on `val_dataset_path` (robomimic's `valid` demos, never seen
 in training or normalization) and writes it to `<logdir>/heldout_validation.json`.
 
+The run folder also gets its own record (afterslip.runs): manifest.json, console.log and
+summary.json, so results never depend on copying terminal output.
+
     python -m afterslip.upstream.pretrain configs/pretrain/can_reflow_mlp_state.yaml device=cpu
 """
 
@@ -24,9 +27,15 @@ from pathlib import Path
 
 from omegaconf import DictConfig, OmegaConf
 
+from afterslip.runs import RunRecord
 from afterslip.upstream import REPO_ROOT, configure_reinflow
 
 REPO_CONFIGS = REPO_ROOT / "configs"
+HELDOUT_NOTE = (
+    "Flow-matching loss on the held-out demonstrations: how well the policy imitates them. "
+    "It is not a task success rate; the task evaluation "
+    "(afterslip.evaluation.nominal) measures that."
+)
 
 
 def load_config(path: str | Path, overrides: list[str] | None = None) -> DictConfig:
@@ -101,16 +110,31 @@ def run(cfg: DictConfig) -> dict | None:
     # the upstream code itself stays unmodified (docs/setup.md §2.2).
     train_agent.batch_to_device = functools.partial(utils.batch_to_device, device=cfg.device)
 
-    agent_class = hydra.utils.get_class(cfg._target_)
-    agent_class(cfg).run()
+    config = OmegaConf.to_container(cfg, resolve=True)
+    assert isinstance(config, dict)
+    # The statistics the policy is trained with; the evaluation checks it uses the same file.
+    normalization_sha256 = hashlib.sha256(Path(cfg.normalization_path).read_bytes()).hexdigest()
+    config["normalization_sha256"] = normalization_sha256
+    with RunRecord(cfg.logdir, kind="pretraining", config=config, device=cfg.device) as record:
+        agent_class = hydra.utils.get_class(cfg._target_)
+        agent_class(cfg).run()
 
-    if cfg.get("val_dataset_path") is None:
-        return None
-    last = Path(cfg.logdir) / "checkpoint" / "last.pt"
-    report: dict = {weights: heldout_loss(cfg, last, weights) for weights in ("model", "ema")}
-    report["logdir"] = cfg.logdir
-    report["checkpoint_sha256"] = hashlib.sha256(last.read_bytes()).hexdigest()
-    (Path(cfg.logdir) / "heldout_validation.json").write_text(json.dumps(report, indent=2) + "\n")
+        report: dict | None = None
+        if cfg.get("val_dataset_path") is not None:
+            last = Path(cfg.logdir) / "checkpoint" / "last.pt"
+            report = {weights: heldout_loss(cfg, last, weights) for weights in ("model", "ema")}
+            report["logdir"] = cfg.logdir
+            report["checkpoint_sha256"] = hashlib.sha256(last.read_bytes()).hexdigest()
+            report["normalization_sha256"] = normalization_sha256
+            report["note"] = HELDOUT_NOTE
+            path = Path(cfg.logdir) / "heldout_validation.json"
+            path.write_text(json.dumps(report, indent=2) + "\n")
+        record.finish(
+            report or {"logdir": cfg.logdir, "normalization_sha256": normalization_sha256}
+        )
+        # Start on a fresh line: the progress bar leaves the cursor mid-line.
+        print("\n" + json.dumps(report or {"logdir": cfg.logdir}, indent=2))
+        print(f"\nRun record: {cfg.logdir} (manifest.json, console.log, summary.json)")
     return report
 
 
@@ -118,9 +142,7 @@ def main(argv: list[str] | None = None) -> None:
     args = sys.argv[1:] if argv is None else argv
     if not args:
         raise SystemExit(__doc__)
-    report = run(load_config(args[0], args[1:]))
-    if report is not None:
-        print(json.dumps(report, indent=2))
+    run(load_config(args[0], args[1:]))
 
 
 if __name__ == "__main__":

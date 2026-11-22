@@ -183,6 +183,7 @@ On headless Linux, set the renderer before running tests: `export MUJOCO_GL=osme
 | Changed `environment.yml`, `requirements.in` or `requirements-overrides.txt` | `make lock`, review the diff, `make sync`, `make test`, then commit the inputs and **all** regenerated locks together |
 | Environment broken or modified by hand | `conda deactivate`, `make remove-env`, `make setup` |
 | Check what platform and lock apply | `make platform` |
+| Pretrain or evaluate the Can policy | `make pretrain-can DEVICE=mps`, `make eval-can RUN=<pretraining run folder>`; see [run-cards.md](run-cards.md) |
 | Prepare the Can demonstrations for pretraining (0.2b) | `make data-can` (downloads 47 MB once to `outputs/`, checks its sha256, regenerates the observations) |
 
 ### 6.4 Safety behaviour

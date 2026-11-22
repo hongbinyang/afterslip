@@ -91,7 +91,10 @@ def test_default_run_directory_resolves_once(cfg):
     assert "${" not in cfg.logdir
     assert cfg.logdir.startswith(os.environ["REINFLOW_LOG_DIR"])
     assert cfg.logdir.endswith(f"_{cfg.seed}")
-    assert load_config(CONFIG).logdir == cfg.logdir  # one timestamp per process
+    # Fixed as a plain string in this config: every later read gives the same folder, even
+    # after the clock moves on (a fresh load_config may resolve a new timestamp).
+    raw = OmegaConf.to_container(cfg, resolve=False)
+    assert isinstance(raw, dict) and raw["logdir"] == cfg.logdir
 
 
 def test_normalization_file_matches_the_config(cfg):
