@@ -54,20 +54,26 @@ At the end the launcher prints the held-out report and the run folder. The held-
 
 ## Evaluating a pretrained policy (milestone 0.3d, protocol in m0-evaluation-protocol.md)
 
-Checked 2026-11-22 on an Apple M2 Pro with a throwaway 1-epoch checkpoint and trial runs on fixture seeds; the real policy has not been evaluated in any check.
+Checked 2026-11-22 on an Apple M2 Pro with a throwaway 1-epoch checkpoint and trial runs on fixture seeds; the real policy has not been evaluated in any check. On the lead's machine, the latest finished pretraining run is `2026-11-20_16-13-03_42`.
 
-**Start** (from the repository root, in the `afterslip` environment; `RUN` is the pretraining run folder):
-
-```bash
-make eval-can RUN=outputs/reinflow/log/robomimic/pretrain/can_pre_reflow_mlp_state_ta4_td100/<run folder>
-```
-
-For the policy pretrained on 2026-11-20, whose run predates run records, the expected normalization hash must be given (see below):
+**1. Select the policy** (once per policy; from the repository root, in the `afterslip` environment). The protocol fixes the checkpoint before evaluation, so the evaluation never picks a run by itself; this step records the choice. For the first evaluation, the agreed policy is the run of 2026-11-20 with the checkpoint hash checked on 2026-11-20:
 
 ```bash
-make eval-can RUN=outputs/reinflow/log/robomimic/pretrain/can_pre_reflow_mlp_state_ta4_td100/2026-11-20_16-13-03_42 \
+make select-policy \
+  RUN=outputs/reinflow/log/robomimic/pretrain/can_pre_reflow_mlp_state_ta4_td100/2026-11-20_16-13-03_42 \
+  CKPT_SHA=1d1989ca10e67c3be8a8689b4641ba5c29f3b5ac1c19629bb2f26043a67058fc \
   NORM_SHA=28ed3a099f45d596926f1af2e379cd388d94396371cd48e3006675a48118d46e
 ```
+
+It verifies the checkpoint against `CKPT_SHA` and the normalization file against `NORM_SHA`, prints the selection, and records it in `outputs/eval/can-nominal/selected-policy.json` (git-ignored). Any mismatch stops it and nothing is recorded. `RUN` may be left out only when exactly one finished pretraining run exists; with several, it stops and lists them. `NORM_SHA` is needed only for runs from before run records, like this one. An existing selection is kept unless `REPLACE=1` is given.
+
+**2. Evaluate:**
+
+```bash
+make eval-can
+```
+
+It evaluates the selected policy and first verifies that the checkpoint still has the selected sha256 and that the normalization file has the expected one. `RUN=<pretraining run folder>` evaluates another run explicitly instead (it prints and records that choice). The results always go to a new folder (below).
 
 **Normalization check:** before any seed is used, the harness compares the sha256 of the normalization file it is about to use with the one the policy was trained with: recorded in the pretraining run's `summary.json` (runs since 0.3b) or given as `NORM_SHA`. A mismatch, or a protocol run with no expected hash, stops immediately; no run folder is created.
 
@@ -91,6 +97,6 @@ episodes.jsonl   one line per seed (design.md §7): episode_id, seed, policy_see
 summary.json     successes, rate, 95% Wilson interval, "passed" (at least 180 of 200), settings
 ```
 
-**Normalization provenance for the 2026-11-20 policy (inferred, not recorded by that run):** the pretraining run predates run records, so it did not capture which normalization file it used; the expected hash above is an inference. Checked 2026-11-22: `outputs/reinflow/data/robomimic/can-state/normalization.npz` was written by `make data-can` at 16:12:13, 50 s before the run started, and not modified since; regenerating it from the pinned dataset gives identical arrays (the conversion is deterministic). Its sha256 is `28ed3a099f45d596926f1af2e379cd388d94396371cd48e3006675a48118d46e`, the `NORM_SHA` above; the evaluation enforces it and records the provenance as "given on the command line; not recorded by the pretraining run". Do not run `make data-can` again before this evaluation: the arrays would be identical, but the file and its hash would change.
+**Normalization provenance for the 2026-11-20 policy (inferred, not recorded by that run):** the pretraining run predates run records, so it did not capture which normalization file it used; the expected hash above is an inference. Checked 2026-11-22: `outputs/reinflow/data/robomimic/can-state/normalization.npz` was written by `make data-can` at 16:12:13, 50 s before the run started, and not modified since; regenerating it from the pinned dataset gives identical arrays (the conversion is deterministic). Its sha256 is `28ed3a099f45d596926f1af2e379cd388d94396371cd48e3006675a48118d46e`, the `NORM_SHA` of step 1; selection and evaluation enforce it and records the provenance as "given on the command line; not recorded by the pretraining run". Do not run `make data-can` again before this evaluation: the arrays would be identical, but the file and its hash would change.
 
 At the end it prints, e.g., `Successes 187/200 = 93.5%, 95% Wilson interval 89.2%-96.2%: PASS`. Below 180 it prints `BELOW THRESHOLD (review per protocol)`: the protocol's review then starts; nothing is re-run or changed before that review.

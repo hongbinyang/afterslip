@@ -22,8 +22,10 @@ statistics. For the pretraining run of 2026-11-20, which did not record its norm
 file, this was checked: identical arrays, and the file was written before the run started
 and not changed since (docs/run-cards.md).
 
-    python -m afterslip.evaluation.nominal --run <pretraining run folder>
-    python -m afterslip.evaluation.nominal --run <folder> --episodes 5     # trial: fixture seeds
+    python -m afterslip.evaluation.nominal select [--run <folder>] [--normalization-sha256 H]
+    python -m afterslip.evaluation.nominal                  # evaluate the selected policy
+    python -m afterslip.evaluation.nominal --run <folder>   # evaluate another run explicitly
+    python -m afterslip.evaluation.nominal --episodes 5     # trial: fixture seeds, no verdict
 """
 
 from __future__ import annotations
@@ -194,12 +196,127 @@ def expected_normalization(run_dir: Path, given: str | None) -> tuple[str | None
     return None, "unverified"
 
 
+def finished_pretraining_runs(log_root: Path | None = None) -> list[Path]:
+    """Finished pretraining runs of the state-based Can policy, oldest first.
+
+    Finished means: `checkpoint/last.pt` exists and summary.json says "complete", or, for
+    runs from before run records, the held-out report (written at the very end) exists.
+    Run folders are named by start time, so sorting by name sorts by start.
+    """
+    import os
+
+    from afterslip.upstream import configure_reinflow
+
+    configure_reinflow()
+    root = log_root or Path(os.environ["REINFLOW_LOG_DIR"]) / "robomimic" / "pretrain"
+    finished = []
+    for run in root.glob("can_pre_reflow_mlp_state_*/*/"):
+        if not (run / "checkpoint" / "last.pt").is_file():
+            continue
+        summary = run / "summary.json"
+        if summary.is_file():
+            if json.loads(summary.read_text()).get("status") == "complete":
+                finished.append(run)
+        elif (run / "heldout_validation.json").is_file():
+            finished.append(run)
+    return sorted(finished, key=lambda run: run.name)
+
+
+class SelectionError(RuntimeError):
+    """The policy to select is not unambiguous; RUN must name it."""
+
+
+SELECTION = DEFAULT_OUT / "selected-policy.json"  # local, git-ignored
+
+
+def select_policy(
+    run: Path | None = None,
+    normalization_sha256: str | None = None,
+    path: Path | None = None,
+    replace: bool = False,
+    checkpoint_sha256: str | None = None,
+    log_root: Path | None = None,
+) -> dict:
+    """Record the policy the protocol evaluates: run folder and expected hashes.
+
+    The protocol fixes the checkpoint before evaluation, so the evaluation never picks a
+    run by itself: this explicit, checked record is its default. Without `run`, a selection
+    is made only when exactly one finished pretraining run exists; with several, the run
+    must be named. `checkpoint_sha256`, when given, must match the checkpoint. An existing
+    selection is only replaced with `replace`.
+    """
+    from afterslip.upstream.pretrain import load_config
+
+    path = path or SELECTION
+    if path.is_file() and not replace:
+        current = json.loads(path.read_text())
+        raise FileExistsError(
+            f"a policy is already selected: {current['run']} "
+            f"(checkpoint {current['checkpoint_sha256']}); use --replace to change it"
+        )
+    if run is None:
+        candidates = finished_pretraining_runs(log_root)
+        if not candidates:
+            raise FileNotFoundError("no finished pretraining run; run make pretrain-can")
+        if len(candidates) > 1:
+            listing = "\n".join(f"  {c}" for c in candidates)
+            raise SelectionError(
+                f"several finished pretraining runs; name one with RUN=:\n{listing}"
+            )
+        run = candidates[0]
+    run = Path(run)
+    checkpoint = run / "checkpoint" / "last.pt"
+    if not checkpoint.is_file():
+        raise FileNotFoundError(f"{checkpoint} does not exist")
+    actual_checkpoint = sha256(checkpoint)
+    if checkpoint_sha256 is not None and actual_checkpoint != checkpoint_sha256:
+        raise ProvenanceError(
+            f"{checkpoint} has sha256 {actual_checkpoint}, expected {checkpoint_sha256}"
+        )
+    expected, source = expected_normalization(run, normalization_sha256)
+    if expected is None:
+        raise ProvenanceError(
+            f"{run} does not record its normalization hash; select it with "
+            "--normalization-sha256 (make select-policy NORM_SHA=...), see docs/run-cards.md"
+        )
+    actual = sha256(load_config(CONFIG).normalization_path)
+    if actual != expected:
+        raise ProvenanceError(f"normalization file has sha256 {actual}, expected {expected}")
+    selection = {
+        "run": str(run),
+        "checkpoint": str(checkpoint),
+        "checkpoint_sha256": actual_checkpoint,
+        "checkpoint_sha256_verified": checkpoint_sha256 is not None,
+        "weights": WEIGHTS,
+        "normalization_sha256": expected,
+        "normalization_provenance": source,
+        "selected_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+    print(json.dumps(selection, indent=2))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(selection, indent=2) + "\n")
+    print(f"Selected for evaluation; recorded in {path}")
+    return selection
+
+
+def load_selection(path: Path | None = None) -> dict:
+    path = path or SELECTION
+    if not path.is_file():
+        raise ProvenanceError(
+            "no policy selected for evaluation; run make select-policy first "
+            "(or give RUN=<pretraining run folder>), see docs/run-cards.md"
+        )
+    return json.loads(path.read_text())
+
+
 def evaluate(
     run_dir: Path,
     out_dir: Path,
     episodes: int | None = None,
     device: str = "cpu",
     normalization_sha256: str | None = None,
+    run_chosen_by: str = "given",
+    expected_checkpoint: str | None = None,
 ):
     from afterslip.tasks.robosuite_can import CanTaskConfig, RobosuiteCanTask
 
@@ -210,6 +327,11 @@ def evaluate(
     policy_hash = sha256(checkpoint)
 
     # Checked before any run folder is created or any seed is used.
+    if expected_checkpoint is not None and policy_hash != expected_checkpoint:
+        raise ProvenanceError(
+            f"{checkpoint} has sha256 {policy_hash}, but the selected policy is "
+            f"{expected_checkpoint}; the checkpoint changed since it was selected"
+        )
     actual = sha256(policy.cfg.normalization_path)
     expected, source = expected_normalization(Path(run_dir), normalization_sha256)
     if expected is None and is_protocol:
@@ -226,6 +348,7 @@ def evaluate(
         "protocol": "docs/m0-evaluation-protocol.md",
         "protocol_run": is_protocol,
         "pretraining_run": str(run_dir),
+        "pretraining_run_chosen_by": run_chosen_by,
         "checkpoint": str(checkpoint),
         "checkpoint_sha256": policy_hash,
         "normalization": str(policy.cfg.normalization_path),
@@ -298,25 +421,43 @@ def evaluate(
     return result
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--run", required=True, type=Path, help="pretraining run folder")
-    parser.add_argument(
-        "--episodes",
-        type=int,
-        default=None,
-        help="trial on the first N fixture seeds, not the protocol",
-    )
-    parser.add_argument("--device", default="cpu")
-    parser.add_argument("--out", type=Path, default=None)
-    parser.add_argument(
-        "--normalization-sha256",
-        default=None,
-        help="expected hash, for pretraining runs that did not record it",
-    )
-    args = parser.parse_args()
+    sub = parser.add_subparsers(dest="command")
+    select = sub.add_parser("select", help="record which pretrained policy to evaluate")
+    select.add_argument("--run", type=Path, default=None, help="needed if several runs finished")
+    select.add_argument("--checkpoint-sha256", default=None, help="expected checkpoint hash")
+    select.add_argument("--normalization-sha256", default=None, help="for runs before 0.3b")
+    select.add_argument("--replace", action="store_true", help="replace an existing selection")
+    evaluation = sub.add_parser("run", help="evaluate (default command)")
+    for p in (parser, evaluation):
+        p.add_argument("--run", type=Path, default=None, help="default: the selected policy")
+        p.add_argument("--episodes", type=int, default=None, help="trial on N fixture seeds")
+        p.add_argument("--device", default="cpu")
+        p.add_argument("--out", type=Path, default=None)
+        p.add_argument("--normalization-sha256", default=None, help="for runs before 0.3b")
+    args = parser.parse_args(argv)
+    if args.command == "select":
+        select_policy(
+            args.run,
+            args.normalization_sha256,
+            replace=args.replace,
+            checkpoint_sha256=args.checkpoint_sha256,
+        )
+        return
     out = args.out or DEFAULT_OUT / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    evaluate(args.run, out, args.episodes, args.device, args.normalization_sha256)
+    if args.run is not None:
+        run, norm, ckpt, chosen_by = args.run, args.normalization_sha256, None, "given (--run)"
+    else:
+        chosen = load_selection()
+        run, norm, ckpt = (
+            Path(chosen["run"]),
+            chosen["normalization_sha256"],
+            chosen["checkpoint_sha256"],
+        )
+        chosen_by = f"selected policy ({SELECTION}, selected {chosen['selected_at']})"
+    print(f"Evaluating pretraining run {run} ({chosen_by})", flush=True)
+    evaluate(run, out, args.episodes, args.device, norm, chosen_by, expected_checkpoint=ckpt)
 
 
 if __name__ == "__main__":

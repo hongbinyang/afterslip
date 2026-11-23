@@ -188,3 +188,79 @@ def test_a_given_hash_is_checked_and_labelled_as_inferred(tiny_run, tmp_path):
     assert result["normalization_provenance"].startswith("given on the command line")
     manifest = json.loads((out / "manifest.json").read_text())
     assert "not recorded by the pretraining run" in manifest["config"]["normalization_provenance"]
+
+
+@pytest.fixture
+def selection_file(tmp_path, monkeypatch):
+    path = tmp_path / "selected-policy.json"
+    monkeypatch.setattr(nominal, "SELECTION", path)
+    return path
+
+
+def test_selecting_a_policy_records_its_hashes_once(tiny_run, selection_file):
+    chosen = nominal.select_policy(tiny_run)
+    saved = json.loads(selection_file.read_text())
+    assert saved == chosen and saved["run"] == str(tiny_run)
+    assert saved["checkpoint_sha256"] == nominal.sha256(tiny_run / "checkpoint" / "last.pt")
+    assert saved["normalization_provenance"] == "recorded by the pretraining run"
+    with pytest.raises(FileExistsError, match="already selected"):
+        nominal.select_policy(tiny_run)
+    assert nominal.select_policy(tiny_run, replace=True)["run"] == str(tiny_run)
+
+
+def test_selecting_an_older_run_needs_the_normalization_hash(tiny_run, tmp_path, selection_file):
+    older = _older_run(tiny_run, tmp_path)
+    with pytest.raises(nominal.ProvenanceError, match="does not record"):
+        nominal.select_policy(older)
+    assert not selection_file.exists()
+    stats = can_demos.DEFAULT_OUT_DIR / "normalization.npz"
+    chosen = nominal.select_policy(older, normalization_sha256=nominal.sha256(stats))
+    assert chosen["normalization_provenance"].startswith("given on the command line")
+
+
+def test_evaluation_without_a_selection_stops(selection_file):
+    with pytest.raises(nominal.ProvenanceError, match="no policy selected"):
+        nominal.main(["--episodes", "1"])
+
+
+def test_a_checkpoint_changed_after_selection_stops_before_any_seed(tiny_run, tmp_path):
+    out = tmp_path / "eval"
+    with pytest.raises(nominal.ProvenanceError, match="changed since it was selected"):
+        nominal.evaluate(tiny_run, out, episodes=1, expected_checkpoint="0" * 64)
+    assert not out.exists()
+
+
+def test_the_default_command_evaluates_the_selected_policy(tiny_run, tmp_path, selection_file):
+    nominal.select_policy(tiny_run)
+    out = tmp_path / "eval"
+    nominal.main(["--episodes", "1", "--out", str(out)])  # trial: fixture seed 0 only
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert manifest["config"]["pretraining_run"] == str(tiny_run)
+    assert manifest["config"]["pretraining_run_chosen_by"].startswith("selected policy")
+
+
+def _finished_copy(tiny_run, root, stamp):
+    import shutil
+
+    run = root / "can_pre_reflow_mlp_state_ta4_td100" / stamp
+    shutil.copytree(tiny_run, run)
+    return run
+
+
+def test_selection_without_run_needs_exactly_one_finished_run(tiny_run, tmp_path, selection_file):
+    root = tmp_path / "pretrain"
+    only = _finished_copy(tiny_run, root, "2026-11-20_16-13-03_42")
+    assert nominal.select_policy(log_root=root)["run"] == str(only)
+    _finished_copy(tiny_run, root, "2026-11-22_08-00-00_42")
+    with pytest.raises(nominal.SelectionError, match="name one with RUN="):
+        nominal.select_policy(log_root=root, replace=True)
+    assert json.loads(selection_file.read_text())["run"] == str(only)  # unchanged
+
+
+def test_selection_verifies_an_expected_checkpoint_hash(tiny_run, selection_file):
+    with pytest.raises(nominal.ProvenanceError, match="expected"):
+        nominal.select_policy(tiny_run, checkpoint_sha256="0" * 64)
+    assert not selection_file.exists()
+    good = nominal.sha256(tiny_run / "checkpoint" / "last.pt")
+    chosen = nominal.select_policy(tiny_run, checkpoint_sha256=good)
+    assert chosen["checkpoint_sha256_verified"] is True

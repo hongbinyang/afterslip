@@ -62,7 +62,7 @@ REINFLOW := third_party/ReinFlow
 UV_COMPILE := uv pip compile requirements.in --override requirements-overrides.txt \
               --python-version $(PYTHON_VERSION) --generate-hashes --quiet
 
-.PHONY: help platform check-platform check-tools check-submodules lock env sync install setup data-can pretrain-can eval-can test smoke format lint typecheck remove-env
+.PHONY: help platform check-platform check-tools check-submodules lock env sync install setup data-can pretrain-can select-policy eval-can test smoke format lint typecheck remove-env
 
 help:  ## List the available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -186,9 +186,13 @@ pretrain-can:  ## Pretrain the state-based Can flow policy (DEVICE=cuda:0|cpu|mp
 RUN ?=
 EPISODES ?=
 NORM_SHA ?=
-eval-can:  ## Evaluate a pretrained Can policy by the M0 protocol (RUN=<pretraining run folder>; EPISODES=n for a trial)
-	@test -n "$(RUN)" || { echo "Set RUN to the pretraining run folder, see docs/run-cards.md"; exit 1; }
-	"$(ENV_PYTHON)" -m afterslip.evaluation.nominal --run "$(RUN)" $(if $(EPISODES),--episodes $(EPISODES)) $(if $(NORM_SHA),--normalization-sha256 $(NORM_SHA))
+REPLACE ?=
+CKPT_SHA ?=
+select-policy:  ## Record which pretrained Can policy eval-can evaluates (RUN= if several finished; CKPT_SHA=, NORM_SHA=)
+	"$(ENV_PYTHON)" -m afterslip.evaluation.nominal select $(if $(RUN),--run "$(RUN)") $(if $(CKPT_SHA),--checkpoint-sha256 $(CKPT_SHA)) $(if $(NORM_SHA),--normalization-sha256 $(NORM_SHA)) $(if $(REPLACE),--replace)
+
+eval-can:  ## Evaluate the selected policy by the M0 protocol (RUN= another run, EPISODES=n trial)
+	"$(ENV_PYTHON)" -m afterslip.evaluation.nominal $(if $(RUN),--run "$(RUN)") $(if $(EPISODES),--episodes $(EPISODES)) $(if $(NORM_SHA),--normalization-sha256 $(NORM_SHA))
 
 # ---------------------------------------------------------------------------
 # Tests
